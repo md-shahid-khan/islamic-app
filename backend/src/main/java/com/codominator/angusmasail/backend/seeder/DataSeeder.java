@@ -42,6 +42,9 @@ public class DataSeeder implements CommandLineRunner {
     @Autowired
     private BannerRepository bannerRepository;
 
+    @Autowired
+    private MosqueRepository mosqueRepository;
+
     @Autowired(required = false)
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
@@ -60,6 +63,43 @@ public class DataSeeder implements CommandLineRunner {
                 jdbcTemplate.execute("ALTER TABLE queries_masail DROP CONSTRAINT IF EXISTS masail_queries_manhaj_snapshot_check");
             } catch (Exception ignored) {}
         }
+
+        // 0. Seed Registered Mosques
+        Mosque mosque1 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Al-Noor", "Central District")
+                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                        .name("Masjid Al-Noor")
+                        .city("Central District")
+                        .address("Plot 12, Main Sunni Complex")
+                        .fiqhSchool("Hanafi")
+                        .verified(true)
+                        .build()));
+
+        Mosque mosque2 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Bilal (Downtown)", "East District")
+                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                        .name("Masjid Bilal (Downtown)")
+                        .city("East District")
+                        .address("Near Clock Tower")
+                        .fiqhSchool("Shafi'i")
+                        .verified(true)
+                        .build()));
+
+        Mosque mosque3 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Islamic Center of Peace", "North Valley")
+                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                        .name("Islamic Center of Peace")
+                        .city("North Valley")
+                        .address("Garden Avenue")
+                        .fiqhSchool("Hanafi")
+                        .verified(true)
+                        .build()));
+
+        Mosque mosque4 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Usman Ghani", "West Sector")
+                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                        .name("Masjid Usman Ghani")
+                        .city("West Sector")
+                        .address("Ring Road, Sector 5")
+                        .fiqhSchool("Hanafi")
+                        .verified(true)
+                        .build()));
 
         // 1. Seed or get Imam 1: Imam Syed Ahmed
         User imam1User = userRepository.findByPhone("1234567890").orElseGet(() -> {
@@ -86,6 +126,13 @@ public class DataSeeder implements CommandLineRunner {
                             .build();
                     return imamProfileRepository.save(p);
                 });
+
+        if (imam1Profile.getMosque() == null) {
+            imam1Profile.setMosque(mosque1);
+            imam1Profile = imamProfileRepository.save(imam1Profile);
+            mosque1.setCurrentImam(imam1Profile);
+            mosqueRepository.save(mosque1);
+        }
 
         // 2. Seed Imam 2: Sheikh Bilal Mustafa
         User imam2User = userRepository.findByPhone("1122334455").orElseGet(() -> {
@@ -140,6 +187,7 @@ public class DataSeeder implements CommandLineRunner {
                 });
 
         // 4. Seed Regular Users
+        final ImamProfile selectedImam1 = imam1Profile;
         User regularUser1 = userRepository.findByPhone("0987654321").orElseGet(() -> {
             User u = User.builder()
                     .phone("0987654321")
@@ -147,7 +195,7 @@ public class DataSeeder implements CommandLineRunner {
                     .locality("Central District")
                     .manhaj(Manhaj.HANAFI.getDisplayName())
                     .role(Role.ROLE_USER)
-                    .selectedImam(imam1Profile)
+                    .selectedImam(selectedImam1)
                     .build();
             return userRepository.save(u);
         });
@@ -159,7 +207,7 @@ public class DataSeeder implements CommandLineRunner {
                     .locality("North Area")
                     .manhaj(Manhaj.HANAFI.getDisplayName())
                     .role(Role.ROLE_USER)
-                    .selectedImam(imam1Profile)
+                    .selectedImam(selectedImam1)
                     .build();
             return userRepository.save(u);
         });

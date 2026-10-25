@@ -26,6 +26,24 @@ interface ApiService {
     @POST("/api/v1/auth/send-otp")
     suspend fun sendOtp(@Query("phone") phone: String): Response<String>
 
+    @GET("/api/v1/mosques")
+    suspend fun getMosques(
+        @Query("search") search: String? = null,
+        @Query("city") city: String? = null
+    ): Response<List<MosqueDto>>
+
+    @GET("/api/v1/mosques/available")
+    suspend fun getAvailableMosques(): Response<List<MosqueDto>>
+
+    @POST("/api/v1/mosques")
+    suspend fun createMosque(@Body req: CreateMosqueRequest): Response<MosqueDto>
+
+    @PUT("/api/v1/users/select-mosque/{mosqueId}")
+    suspend fun selectMosque(@Path("mosqueId") mosqueId: String): Response<UserDto>
+
+    @POST("/api/v1/imam/disassociate")
+    suspend fun disassociateImam(): Response<AuthResponse>
+
     @GET("/api/v1/imams")
     suspend fun getImams(): Response<List<ImamProfileDto>>
 

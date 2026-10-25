@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,10 +20,17 @@ public class ImamRegistrationRequest {
     @NotBlank(message = "Phone number is required")
     private String phone;
 
-    @NotBlank(message = "Mosque name is required")
+    /**
+     * Optional: ID of an existing registered Mosque in the system.
+     * If provided, the Imam will be associated with this existing Mosque.
+     */
+    private UUID mosqueId;
+
+    /**
+     * Used if mosqueId is not provided, or to specify new mosque details.
+     */
     private String masjidName;
 
-    @NotBlank(message = "Mosque address is required")
     private String masjidAddress;
 
     private String masjidCity;

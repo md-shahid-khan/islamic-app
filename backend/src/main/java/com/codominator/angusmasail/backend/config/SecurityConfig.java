@@ -8,6 +8,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -21,6 +22,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
 
 @Configuration
+@EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
 
@@ -59,7 +61,7 @@ public class SecurityConfig {
                     .requestMatchers("/uploads/**").permitAll()
                     .requestMatchers("/ws/**", "/ws/chat/**", "/ws-chat/**").permitAll()
                     .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/imams/**", "/api/v1/prayer/daily/**", "/api/v1/resources/**", "/api/v1/status/active/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/imams/**", "/api/v1/mosques/**", "/api/v1/prayer/daily/**", "/api/v1/resources/**", "/api/v1/status/active/**").permitAll()
                     .requestMatchers(HttpMethod.PUT, "/api/v1/imam/prayer/update", "/api/v1/prayer/**").permitAll()
                     .requestMatchers("/api/v1/admin/**").permitAll()
                     .requestMatchers("/api/v1/chat/upload", "/api/v1/chat/**").permitAll()

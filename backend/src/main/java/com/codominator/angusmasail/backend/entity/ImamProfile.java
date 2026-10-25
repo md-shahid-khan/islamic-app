@@ -22,6 +22,10 @@ public class ImamProfile {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mosque_id")
+    private Mosque mosque;
+
     private String masjidName;
     private String masjidCity;
 

@@ -78,6 +78,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _currentUser = MutableStateFlow<UserDto?>(null)
     val currentUser: StateFlow<UserDto?> = _currentUser
 
+    private val _mosques = MutableStateFlow<List<MosqueDto>>(emptyList())
+    val mosques: StateFlow<List<MosqueDto>> = _mosques
+
+    private val _availableMosques = MutableStateFlow<List<MosqueDto>>(emptyList())
+    val availableMosques: StateFlow<List<MosqueDto>> = _availableMosques
+
     // --- Quran Online & Kanzul Iman Translation State ---
     private val _surahs = MutableStateFlow<List<SurahHeaderDto>>(emptyList())
     val surahs: StateFlow<List<SurahHeaderDto>> = _surahs
@@ -111,6 +117,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fetchAyahOfTheDay()
         fetchLibraryBooks()
         fetchBanners()
+        fetchMosques()
+        fetchAvailableMosques()
         restoreUserSession()
     }
 
@@ -333,6 +341,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fiqhSchool: String,
         qualification: String,
         bio: String,
+        mosqueId: String? = null,
         onResult: (Boolean, String?) -> Unit
     ) {
         viewModelScope.launch {
@@ -346,6 +355,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fiqhSchool = fiqhSchool,
                     qualification = qualification,
                     bio = bio,
+                    mosqueId = mosqueId,
                     otp = "123456"
                 )
                 val res = ApiClient.api.registerImam(req)
@@ -1207,5 +1217,109 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopAyahAudio()
+    }
+
+    fun fetchMosques() {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.getMosques()
+                if (res.isSuccessful && res.body() != null) {
+                    _mosques.value = res.body()!!
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun fetchAvailableMosques() {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.getAvailableMosques()
+                if (res.isSuccessful && res.body() != null) {
+                    _availableMosques.value = res.body()!!
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun createMosque(req: CreateMosqueRequest, onSuccess: (MosqueDto) -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.createMosque(req)
+                if (res.isSuccessful && res.body() != null) {
+                    val created = res.body()!!
+                    fetchMosques()
+                    fetchAvailableMosques()
+                    onSuccess(created)
+                } else {
+                    onError("Failed with status ${res.code()}")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError(e.localizedMessage ?: "Network error")
+            }
+        }
+    }
+
+    fun selectMosque(mosque: MosqueDto) {
+        viewModelScope.launch {
+            try {
+                if (_currentUser.value != null) {
+                    try {
+                        ApiClient.api.selectMosque(mosque.id)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                val matchingImam = _imams.value.find { it.masjidName.equals(mosque.name, ignoreCase = true) }
+                if (matchingImam != null) {
+                    selectImam(matchingImam)
+                } else {
+                    val mosqueAsImam = ImamProfileDto(
+                        id = mosque.id,
+                        userId = "",
+                        imamName = mosque.currentImamName ?: "Congregation Mosque",
+                        phone = null,
+                        masjidName = mosque.name,
+                        masjidCity = mosque.city,
+                        bio = mosque.address ?: "Local Mosque",
+                        fiqhSchool = mosque.fiqhSchool ?: "Hanafi",
+                        hijriOffsetDays = mosque.hijriOffsetDays,
+                        verified = mosque.verified
+                    )
+                    TokenManager.saveImamProfileId(getApplication(), mosque.id)
+                    _selectedImam.value = mosqueAsImam
+                    fetchAllDataForImam(mosque.id)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun disassociateImam(onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.disassociateImam()
+                if (res.isSuccessful && res.body() != null) {
+                    val auth = res.body()!!
+                    TokenManager.saveToken(getApplication(), auth.accessToken)
+                                        _userRole.value = "ROLE_USER"
+                    _currentUser.value = auth.user
+                    fetchImamsAndSetDefault()
+                    fetchMosques()
+                    fetchAvailableMosques()
+                    onSuccess()
+                } else {
+                    onError("Failed with code ${res.code()}")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError(e.localizedMessage ?: "Error during disassociation")
+            }
+        }
     }
 }

@@ -3,12 +3,14 @@ package com.codominator.angusmasail.backend.service;
 import com.codominator.angusmasail.backend.config.JwtUtils;
 import com.codominator.angusmasail.backend.dto.*;
 import com.codominator.angusmasail.backend.entity.ImamProfile;
+import com.codominator.angusmasail.backend.entity.Mosque;
 import com.codominator.angusmasail.backend.entity.PrayerTimetable;
 import com.codominator.angusmasail.backend.entity.Role;
 import com.codominator.angusmasail.backend.entity.User;
 import com.codominator.angusmasail.backend.exception.ResourceNotFoundException;
 import com.codominator.angusmasail.backend.exception.UnauthorizedActionException;
 import com.codominator.angusmasail.backend.repository.ImamProfileRepository;
+import com.codominator.angusmasail.backend.repository.MosqueRepository;
 import com.codominator.angusmasail.backend.repository.PrayerTimetableRepository;
 import com.codominator.angusmasail.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +34,9 @@ public class AuthService {
 
     @Autowired
     private ImamProfileRepository imamProfileRepository;
+
+    @Autowired
+    private MosqueRepository mosqueRepository;
 
     @Autowired
     private PrayerTimetableRepository prayerTimetableRepository;
@@ -68,64 +73,69 @@ public class AuthService {
     @Transactional
     public Map<String, Object> registerUser(RegisterRequest request) {
         String cleanEmail = request.getEmail().trim().toLowerCase();
-        String cleanUsername = request.getUsername().trim().toLowerCase();
         String cleanPhone = request.getPhone().trim();
+        String cleanUsername = request.getUsername().trim();
 
-        // 1. Check existing verified user collisions
-        Optional<User> byEmail = userRepository.findByEmail(cleanEmail);
-        if (byEmail.isPresent() && Boolean.TRUE.equals(byEmail.get().getEmailVerified())) {
-            throw new IllegalArgumentException("An account with email " + cleanEmail + " already exists. Please sign in.");
+        if (userRepository.existsByUsername(cleanUsername)) {
+            throw new UnauthorizedActionException("Username is already taken");
+        }
+        if (userRepository.existsByEmail(cleanEmail)) {
+            throw new UnauthorizedActionException("Email is already registered");
+        }
+        if (userRepository.existsByPhone(cleanPhone)) {
+            throw new UnauthorizedActionException("Phone number is already registered");
         }
 
-        Optional<User> byUsername = userRepository.findByUsername(cleanUsername);
-        if (byUsername.isPresent() && Boolean.TRUE.equals(byUsername.get().getEmailVerified())) {
-            throw new IllegalArgumentException("Username @" + cleanUsername + " is already taken. Please choose another.");
-        }
+        User user = User.builder()
+                .username(cleanUsername)
+                .email(cleanEmail)
+                .password(passwordEncoder.encode(request.getPassword()))
+                .phone(cleanPhone)
+                .name(request.getName() != null && !request.getName().isBlank() ? request.getName().trim() : cleanUsername)
+                .emailVerified(false)
+                .role(Role.ROLE_USER)
+                .build();
 
-        Optional<User> byPhone = userRepository.findByPhone(cleanPhone);
-        if (byPhone.isPresent() && Boolean.TRUE.equals(byPhone.get().getEmailVerified()) && !byPhone.get().getId().equals(byEmail.map(User::getId).orElse(null))) {
-            throw new IllegalArgumentException("Mobile phone number " + cleanPhone + " is already registered.");
-        }
-
-        // 2. Create or reuse unverified User
-        User user = byEmail.or(() -> byPhone).orElseGet(User::new);
-        user.setUsername(cleanUsername);
-        user.setEmail(cleanEmail);
-        user.setPhone(cleanPhone);
-        user.setName(request.getName() != null && !request.getName().isBlank() ? request.getName().trim() : request.getUsername().trim());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setEmailVerified(false);
-        if (user.getRole() == null) {
-            user.setRole(Role.ROLE_USER);
-        }
         userRepository.save(user);
 
-        // 3. Dispatch OTP via EmailService
-        String sentOtp = emailService.generateAndSendOtp(cleanEmail);
+        // Dispatch 6-digit OTP to user's email
+        String otp = emailService.generateAndSendOtp(cleanEmail);
+        if (redisTemplate != null) {
+            try {
+                redisTemplate.opsForValue().set(OTP_PREFIX + cleanEmail, otp, Duration.ofMinutes(10));
+            } catch (Exception ignored) {}
+        }
 
         return Map.of(
-            "status", "SUCCESS",
-            "message", "Verification OTP sent successfully to " + cleanEmail,
-            "email", cleanEmail,
-            "devOtp", sentOtp // included for testing convenience in development
+                "message", "Verification OTP dispatched to " + cleanEmail,
+                "email", cleanEmail,
+                "expiresInMinutes", 10
         );
     }
 
     /**
-     * Step 2: User submits the 6-digit OTP received on email.
-     * Completes registration, activates account, and issues authentication JWT tokens.
+     * Step 2: User submits the OTP received via email to activate the account.
      */
     @Transactional
     public AuthResponse verifyEmailOtp(VerifyEmailOtpRequest request) {
         String cleanEmail = request.getEmail().trim().toLowerCase();
-        boolean valid = emailService.verifyOtp(cleanEmail, request.getOtp());
+        String submittedOtp = request.getOtp().trim();
 
-        if (!valid) {
-            throw new UnauthorizedActionException("Invalid or expired OTP code. Please check your email and try again.");
+        String storedOtp = redisTemplate != null ? (String) redisTemplate.opsForValue().get(OTP_PREFIX + cleanEmail) : null;
+
+        // Allow dev fallback "123456" or verify Redis stored OTP
+        if (!"123456".equals(submittedOtp) && (storedOtp == null || !storedOtp.equals(submittedOtp))) {
+            throw new UnauthorizedActionException("Invalid or expired email OTP");
+        }
+
+        if (redisTemplate != null) {
+            try {
+                redisTemplate.delete(OTP_PREFIX + cleanEmail);
+            } catch (Exception ignored) {}
         }
 
         User user = userRepository.findByEmail(cleanEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("No pending registration found for email: " + cleanEmail));
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + cleanEmail));
 
         user.setEmailVerified(true);
         user = userRepository.save(user);
@@ -141,45 +151,54 @@ public class AuthService {
     }
 
     /**
-     * Production Grade Login:
-     * Supports identifier (Username / Email / Mobile Phone) + Password or OTP.
+     * Universal Login: Supports identifier (Email / Username / Phone) + Password or OTP.
      */
     @Transactional
     public AuthResponse login(LoginRequest request) {
         String identifier = request.getIdentifier().trim();
-        String cleanIdentifier = identifier.toLowerCase();
+        Optional<User> userOpt;
 
-        // Find user by Email, Username, or Phone
-        Optional<User> userOpt = userRepository.findByEmail(cleanIdentifier)
-                .or(() -> userRepository.findByUsername(cleanIdentifier))
-                .or(() -> userRepository.findByPhone(identifier));
-
-        if (userOpt.isEmpty()) {
-            throw new UnauthorizedActionException("No account found matching '" + identifier + "'. Please check your credentials or register.");
+        if (identifier.contains("@")) {
+            userOpt = userRepository.findByEmail(identifier.toLowerCase());
+        } else if (identifier.matches("\\d{10}")) {
+            userOpt = userRepository.findByPhone(identifier);
+        } else {
+            userOpt = userRepository.findByUsername(identifier);
         }
 
-        User user = userOpt.get();
+        User user;
 
-        // 1. Password verification
-        if (request.getPassword() != null && !request.getPassword().isBlank()) {
-            if (user.getPassword() != null) {
-                boolean matches = passwordEncoder.matches(request.getPassword(), user.getPassword())
-                        || "password".equals(request.getPassword()) // universal dev password fallback
-                        || "admin123".equals(request.getPassword());
-                if (!matches) {
-                    throw new UnauthorizedActionException("Incorrect password. Please try again.");
-                }
-            }
-        } 
-        // 2. OTP verification
-        else if (request.getOtp() != null && !request.getOtp().isBlank()) {
-            boolean otpValid = "123456".equals(request.getOtp().trim())
-                    || (user.getEmail() != null && emailService.verifyOtp(user.getEmail(), request.getOtp()));
-            if (!otpValid) {
-                throw new UnauthorizedActionException("Invalid OTP code.");
+        if (userOpt.isEmpty()) {
+            if (identifier.matches("\\d{10}")) {
+                // Auto-create basic user for quick OTP login if phone doesn't exist
+                user = User.builder()
+                        .phone(identifier)
+                        .username("user_" + identifier.substring(Math.max(0, identifier.length() - 4)))
+                        .name("User " + identifier.substring(Math.max(0, identifier.length() - 4)))
+                        .locality("Local Community")
+                        .role(Role.ROLE_USER)
+                        .emailVerified(false)
+                        .build();
+                user = userRepository.save(user);
+            } else {
+                throw new UnauthorizedActionException("Invalid username, email or phone number");
             }
         } else {
-            throw new UnauthorizedActionException("Password or OTP is required to sign in.");
+            user = userOpt.get();
+        }
+
+        // Validate credentials: password or OTP
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            if (user.getPassword() == null || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                throw new UnauthorizedActionException("Invalid password");
+            }
+        } else if (request.getOtp() != null && !request.getOtp().isBlank()) {
+            String storedOtp = redisTemplate != null ? (String) redisTemplate.opsForValue().get(OTP_PREFIX + user.getPhone()) : null;
+            if (!"123456".equals(request.getOtp()) && (storedOtp == null || !storedOtp.equals(request.getOtp()))) {
+                throw new UnauthorizedActionException("Invalid or expired OTP");
+            }
+        } else {
+            throw new UnauthorizedActionException("Password or OTP is required for login");
         }
 
         String accessToken = jwtUtils.generateAccessToken(user.getId(), user.getPhone(), user.getRole().name());
@@ -226,14 +245,31 @@ public class AuthService {
             user = userRepository.save(user);
 
             if (role == Role.ROLE_IMAM) {
+                final User creator1 = user;
+                String masjid = request.getMasjidName() != null ? request.getMasjidName() : "Local Masjid";
+                String city = request.getMasjidCity() != null ? request.getMasjidCity() : "City";
+                String fiqh = request.getFiqhSchool() != null ? request.getFiqhSchool() : "Sunni";
+
+                Mosque mosque = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase(masjid, city)
+                        .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                                .name(masjid)
+                                .city(city)
+                                .fiqhSchool(fiqh)
+                                .registeredBy(creator1)
+                                .verified(true)
+                                .build()));
+
                 ImamProfile profile = ImamProfile.builder()
                         .user(user)
-                        .masjidName(request.getMasjidName() != null ? request.getMasjidName() : "Local Masjid")
-                        .masjidCity(request.getMasjidCity() != null ? request.getMasjidCity() : "City")
-                        .fiqhSchool(request.getFiqhSchool() != null ? request.getFiqhSchool() : "Sunni")
+                        .mosque(mosque)
+                        .masjidName(mosque.getName())
+                        .masjidCity(mosque.getCity())
+                        .fiqhSchool(fiqh)
                         .verified(true)
                         .build();
-                imamProfileRepository.save(profile);
+                profile = imamProfileRepository.save(profile);
+                mosque.setCurrentImam(profile);
+                mosqueRepository.save(mosque);
             }
         } else {
             user = userOpt.get();
@@ -255,7 +291,7 @@ public class AuthService {
         Optional<User> userOpt = userRepository.findByPhone(phone);
         User user;
 
-        String formattedLocality = request.getMasjidAddress().trim() + 
+        String formattedLocality = (request.getMasjidAddress() != null ? request.getMasjidAddress().trim() : "") + 
                 (request.getMasjidCity() != null && !request.getMasjidCity().isBlank() ? ", " + request.getMasjidCity().trim() : "");
 
         if (userOpt.isEmpty()) {
@@ -270,7 +306,9 @@ public class AuthService {
         } else {
             user = userOpt.get();
             user.setName(request.getImamName().trim());
-            user.setLocality(formattedLocality);
+            if (!formattedLocality.isBlank()) {
+                user.setLocality(formattedLocality);
+            }
             user = userRepository.save(user);
         }
 
@@ -284,29 +322,61 @@ public class AuthService {
         }
         String finalBio = bioBuilder.length() > 0 ? bioBuilder.toString() : "Verified Scholar & Imam leading congregational prayers and community Masail guidance.";
 
+        // Associate with existing Mosque or Create New Mosque
+        Mosque mosque = null;
+        if (request.getMosqueId() != null) {
+            mosque = mosqueRepository.findById(request.getMosqueId()).orElse(null);
+        }
+
+        String targetMasjidName = (request.getMasjidName() != null && !request.getMasjidName().isBlank())
+                ? request.getMasjidName().trim() : (mosque != null ? mosque.getName() : "Local Mosque");
+        String city = (request.getMasjidCity() != null && !request.getMasjidCity().isBlank())
+                ? request.getMasjidCity().trim() : (mosque != null ? mosque.getCity() : "Local District");
+        String fiqh = (request.getFiqhSchool() != null && !request.getFiqhSchool().isBlank())
+                ? request.getFiqhSchool().trim() : (mosque != null ? mosque.getFiqhSchool() : "Hanafi");
+
+        if (mosque == null) {
+            final User creator2 = user;
+            final String finalMasjidName = targetMasjidName;
+            final String finalCity = city;
+            final String finalFiqh = fiqh;
+            mosque = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase(finalMasjidName, finalCity)
+                    .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                            .name(finalMasjidName)
+                            .city(finalCity)
+                            .address(request.getMasjidAddress() != null ? request.getMasjidAddress().trim() : "")
+                            .fiqhSchool(finalFiqh)
+                            .registeredBy(creator2)
+                            .verified(true)
+                            .build()));
+        }
+
         Optional<ImamProfile> profileOpt = imamProfileRepository.findByUserId(user.getId());
         ImamProfile profile;
-        String city = request.getMasjidCity() != null && !request.getMasjidCity().isBlank() ? request.getMasjidCity().trim() : request.getMasjidAddress().trim();
-        String fiqh = request.getFiqhSchool() != null && !request.getFiqhSchool().isBlank() ? request.getFiqhSchool().trim() : "Hanafi";
 
         if (profileOpt.isPresent()) {
             profile = profileOpt.get();
-            profile.setMasjidName(request.getMasjidName().trim());
-            profile.setMasjidCity(city);
+            profile.setMosque(mosque);
+            profile.setMasjidName(mosque.getName());
+            profile.setMasjidCity(mosque.getCity());
             profile.setFiqhSchool(fiqh);
             profile.setBio(finalBio);
             profile = imamProfileRepository.save(profile);
         } else {
             profile = ImamProfile.builder()
                     .user(user)
-                    .masjidName(request.getMasjidName().trim())
-                    .masjidCity(city)
+                    .mosque(mosque)
+                    .masjidName(mosque.getName())
+                    .masjidCity(mosque.getCity())
                     .fiqhSchool(fiqh)
                     .bio(finalBio)
                     .verified(false) // Pending Admin Approval!
                     .build();
             profile = imamProfileRepository.save(profile);
         }
+
+        mosque.setCurrentImam(profile);
+        mosqueRepository.save(mosque);
 
         user.setSelectedImam(profile);
         user = userRepository.save(user);
@@ -315,6 +385,7 @@ public class AuthService {
         if (prayerTimetableRepository.findByImamProfileIdAndDate(profile.getId(), today).isEmpty()) {
             PrayerTimetable timetable = PrayerTimetable.builder()
                     .imamProfile(profile)
+                    .mosque(mosque)
                     .date(today)
                     .fajrAzan(LocalTime.of(5, 0))
                     .fajrJamaat(LocalTime.of(5, 30))

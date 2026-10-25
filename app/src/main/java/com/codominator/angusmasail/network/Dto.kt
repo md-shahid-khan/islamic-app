@@ -21,6 +21,7 @@ data class ImamRegistrationRequest(
     val fiqhSchool: String? = "Hanafi",
     val qualification: String? = null,
     val bio: String? = null,
+    val mosqueId: String? = null,
     val otp: String = "123456"
 )
 
@@ -239,4 +240,31 @@ data class SurahDetailDto(
     val bismillahArabic: String? = null,
     val bismillahTranslation: String? = null,
     val ayahs: List<AyahDto> = emptyList()
+)
+
+data class MosqueDto(
+    val id: String,
+    val name: String,
+    val city: String,
+    val address: String? = null,
+    val country: String? = "India",
+    val fiqhSchool: String? = "Hanafi",
+    val imageUrl: String? = null,
+    val hijriOffsetDays: Int = 0,
+    val verified: Boolean = true,
+    val hasImam: Boolean = false,
+    val currentImamId: String? = null,
+    val currentImamName: String? = null,
+    val registeredByName: String? = null,
+    val createdAt: String? = null
+)
+
+data class CreateMosqueRequest(
+    val name: String,
+    val city: String,
+    val address: String? = null,
+    val country: String = "India",
+    val fiqhSchool: String = "Hanafi",
+    val imageUrl: String? = null,
+    val hijriOffsetDays: Int = 0
 )

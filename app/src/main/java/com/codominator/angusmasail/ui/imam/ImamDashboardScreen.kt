@@ -41,7 +41,8 @@ import com.codominator.angusmasail.viewmodel.MainViewModel
 @Composable
 fun ImamDashboardScreen(
     viewModel: MainViewModel? = null,
-    onNavigateToChat: () -> Unit = {}
+    onNavigateToChat: () -> Unit = {},
+    onDisassociated: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -68,6 +69,7 @@ fun ImamDashboardScreen(
 
     var queryToReply by remember { mutableStateOf<MasailQueryDto?>(null) }
     var showBroadcastDialog by remember { mutableStateOf(false) }
+    var showDisassociateDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel?.fetchImamQueries()
@@ -109,14 +111,26 @@ fun ImamDashboardScreen(
                     }
                 }
 
-                IconButton(
-                    onClick = { showBroadcastDialog = true },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(BgMintTint)
-                ) {
-                    Icon(Icons.Rounded.Campaign, contentDescription = "Broadcast", tint = DeepEmerald, modifier = Modifier.size(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { showBroadcastDialog = true },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(BgMintTint)
+                    ) {
+                        Icon(Icons.Rounded.Campaign, contentDescription = "Broadcast", tint = DeepEmerald, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = { showDisassociateDialog = true },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFEBEE))
+                    ) {
+                        Icon(Icons.Rounded.ExitToApp, contentDescription = "Step Down as Imam", tint = Color(0xFFC62828), modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }
@@ -450,6 +464,53 @@ fun ImamDashboardScreen(
     }
 
     // Broadcast Dialog
+    
+    if (showDisassociateDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisassociateDialog = false },
+            title = {
+                Text("Step Down as Imam?", fontWeight = FontWeight.Bold, color = TextPrimary)
+            },
+            text = {
+                Text(
+                    "Are you sure you want to disassociate from this mosque? You will step down as the active Imam and your account will revert to a standard congregant (User). The mosque will remain registered in the directory for a future Imam.",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDisassociateDialog = false
+                        viewModel?.disassociateImam(
+                            onSuccess = {
+                                Toast.makeText(context, "Stepped down successfully. Switched to congregant account.", Toast.LENGTH_LONG).show()
+                                onDisassociated()
+                            },
+                            onError = { err ->
+                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Step Down", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showDisassociateDialog = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = PureCream,
+            shape = RoundedCornerShape(18.dp)
+        )
+    }
+
     if (showBroadcastDialog) {
         var announcement by remember { mutableStateOf("") }
         AlertDialog(

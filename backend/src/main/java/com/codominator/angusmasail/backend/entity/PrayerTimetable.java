@@ -27,8 +27,12 @@ public class PrayerTimetable {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "imam_profile_id", nullable = false)
+    @JoinColumn(name = "imam_profile_id", nullable = true)
     private ImamProfile imamProfile;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "mosque_id", nullable = true)
+    private Mosque mosque;
 
     @Column(nullable = false)
     private LocalDate date;

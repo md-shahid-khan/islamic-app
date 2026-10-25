@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.codominator.angusmasail.network.MosqueDto
 import com.codominator.angusmasail.ui.theme.*
 import com.codominator.angusmasail.viewmodel.MainViewModel
 
@@ -43,6 +44,11 @@ fun ImamRegistrationDialog(
     var qualification by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+
+    val availableMosques by viewModel.availableMosques.collectAsState()
+    var selectedMosqueId by remember { mutableStateOf<String?>(null) }
+    var isNewMosqueMode by remember { mutableStateOf(false) }
+    var expandedMosqueDropdown by remember { mutableStateOf(false) }
 
     val fiqhOptions = listOf("Hanafi", "Shafi'i", "Maliki", "Hanbali", "Ahle Sunnat (Barelvi)")
 
@@ -241,72 +247,175 @@ fun ImamRegistrationDialog(
 
                     HorizontalDivider(color = Color(0xFFE8DFD0))
 
-                    // Section 2: Mosque Details
+                    // Section 2: Mosque Selection / Registration
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "MOSQUE & CONGREGATION LOCATION",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = DeepEmerald,
-                            letterSpacing = 1.sp
-                        )
-
-                        OutlinedTextField(
-                            value = masjidName,
-                            onValueChange = { masjidName = it },
-                            label = { Text("Mosque / Masjid Name *") },
-                            placeholder = { Text("e.g. Masjid Al-Noor / Jama Masjid") },
-                            leadingIcon = {
-                                Icon(Icons.Rounded.LocationCity, contentDescription = null, tint = DeepEmerald)
-                            },
-                            singleLine = true,
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = WarmAlabaster,
-                                unfocusedContainerColor = WarmAlabaster,
-                                focusedBorderColor = DeepEmerald,
-                                unfocusedBorderColor = Color(0xFFDFD5C5)
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "MOSQUE & CONGREGATION",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DeepEmerald,
+                                letterSpacing = 1.sp
                             )
-                        )
+                            if (availableMosques.isNotEmpty()) {
+                                TextButton(
+                                    onClick = {
+                                        isNewMosqueMode = !isNewMosqueMode
+                                        if (isNewMosqueMode) {
+                                            selectedMosqueId = null
+                                            masjidName = ""
+                                            masjidAddress = ""
+                                            masjidCity = ""
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                                ) {
+                                    Text(
+                                        text = if (isNewMosqueMode) "Pick from available" else "+ Create New Mosque",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = DeepEmerald
+                                    )
+                                }
+                            }
+                        }
 
-                        OutlinedTextField(
-                            value = masjidAddress,
-                            onValueChange = { masjidAddress = it },
-                            label = { Text("Mosque Address / Locality *") },
-                            placeholder = { Text("e.g. Station Road, Mohalla / Ward 4") },
-                            leadingIcon = {
-                                Icon(Icons.Rounded.Place, contentDescription = null, tint = DeepEmerald)
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = WarmAlabaster,
-                                unfocusedContainerColor = WarmAlabaster,
-                                focusedBorderColor = DeepEmerald,
-                                unfocusedBorderColor = Color(0xFFDFD5C5)
-                            )
-                        )
+                        if (!isNewMosqueMode && availableMosques.isNotEmpty()) {
+                            // Available Mosques Dropdown
+                            ExposedDropdownMenuBox(
+                                expanded = expandedMosqueDropdown,
+                                onExpandedChange = { expandedMosqueDropdown = !expandedMosqueDropdown },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                OutlinedTextField(
+                                    value = if (selectedMosqueId != null) masjidName else "Select from available mosques...",
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Select Available Mosque *") },
+                                    leadingIcon = {
+                                        Icon(Icons.Rounded.Apartment, contentDescription = null, tint = DeepEmerald)
+                                    },
+                                    trailingIcon = {
+                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedMosqueDropdown)
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .menuAnchor(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = WarmAlabaster,
+                                        unfocusedContainerColor = WarmAlabaster,
+                                        focusedBorderColor = DeepEmerald,
+                                        unfocusedBorderColor = Color(0xFFDFD5C5)
+                                    )
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = expandedMosqueDropdown,
+                                    onDismissRequest = { expandedMosqueDropdown = false }
+                                ) {
+                                    availableMosques.forEach { mosque ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(mosque.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                    Text("${mosque.city} • ${mosque.fiqhSchool ?: "Sunni"}", fontSize = 11.sp, color = TextSecondary)
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedMosqueId = mosque.id
+                                                masjidName = mosque.name
+                                                masjidAddress = mosque.address ?: ""
+                                                masjidCity = mosque.city
+                                                mosque.fiqhSchool?.let { selectedFiqh = it }
+                                                expandedMosqueDropdown = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
 
-                        OutlinedTextField(
-                            value = masjidCity,
-                            onValueChange = { masjidCity = it },
-                            label = { Text("City / District *") },
-                            placeholder = { Text("e.g. Kolkata, Hooghly") },
-                            leadingIcon = {
-                                Icon(Icons.Rounded.Map, contentDescription = null, tint = DeepEmerald)
-                            },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = WarmAlabaster,
-                                unfocusedContainerColor = WarmAlabaster,
-                                focusedBorderColor = DeepEmerald,
-                                unfocusedBorderColor = Color(0xFFDFD5C5)
+                            if (selectedMosqueId != null) {
+                                Surface(
+                                    color = BgMintTint,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(masjidName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DeepEmerald)
+                                            Text("${masjidAddress}, ${masjidCity}", fontSize = 11.sp, color = TextPrimary)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Manual Mosque Details Input
+                            OutlinedTextField(
+                                value = masjidName,
+                                onValueChange = { masjidName = it },
+                                label = { Text("Mosque / Masjid Name *") },
+                                placeholder = { Text("e.g. Masjid Al-Noor / Jama Masjid") },
+                                leadingIcon = {
+                                    Icon(Icons.Rounded.LocationCity, contentDescription = null, tint = DeepEmerald)
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = WarmAlabaster,
+                                    unfocusedContainerColor = WarmAlabaster,
+                                    focusedBorderColor = DeepEmerald,
+                                    unfocusedBorderColor = Color(0xFFDFD5C5)
+                                )
                             )
-                        )
+
+                            OutlinedTextField(
+                                value = masjidAddress,
+                                onValueChange = { masjidAddress = it },
+                                label = { Text("Mosque Address / Locality *") },
+                                placeholder = { Text("e.g. Station Road, Mohalla / Ward 4") },
+                                leadingIcon = {
+                                    Icon(Icons.Rounded.Place, contentDescription = null, tint = DeepEmerald)
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = WarmAlabaster,
+                                    unfocusedContainerColor = WarmAlabaster,
+                                    focusedBorderColor = DeepEmerald,
+                                    unfocusedBorderColor = Color(0xFFDFD5C5)
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = masjidCity,
+                                onValueChange = { masjidCity = it },
+                                label = { Text("City / District *") },
+                                placeholder = { Text("e.g. Kolkata, Hooghly") },
+                                leadingIcon = {
+                                    Icon(Icons.Rounded.Map, contentDescription = null, tint = DeepEmerald)
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = WarmAlabaster,
+                                    unfocusedContainerColor = WarmAlabaster,
+                                    focusedBorderColor = DeepEmerald,
+                                    unfocusedBorderColor = Color(0xFFDFD5C5)
+                                )
+                            )
+                        }
                     }
 
                     HorizontalDivider(color = Color(0xFFE8DFD0))
@@ -395,7 +504,8 @@ fun ImamRegistrationDialog(
                                     masjidCity = masjidCity.trim().ifEmpty { "Local Area" },
                                     fiqhSchool = selectedFiqh,
                                     qualification = qualification.trim(),
-                                    bio = bio.trim()
+                                    bio = bio.trim(),
+                                    mosqueId = selectedMosqueId
                                 ) { success, errorMsg ->
                                     isLoading = false
                                     if (success) {

@@ -1,6 +1,8 @@
 package com.codominator.angusmasail.backend.controller;
 
+import com.codominator.angusmasail.backend.config.JwtUtils;
 import com.codominator.angusmasail.backend.config.UserDetailsImpl;
+import com.codominator.angusmasail.backend.dto.AuthResponse;
 import com.codominator.angusmasail.backend.dto.ImamProfileDto;
 import com.codominator.angusmasail.backend.dto.UserDto;
 import com.codominator.angusmasail.backend.entity.*;
@@ -11,6 +13,7 @@ import com.codominator.angusmasail.backend.service.LocalFileStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -31,7 +34,13 @@ public class UserController {
     private ImamProfileRepository imamProfileRepository;
 
     @Autowired
+    private MosqueRepository mosqueRepository;
+
+    @Autowired
     private AuthService authService;
+
+    @Autowired
+    private JwtUtils jwtUtils;
 
     @Autowired
     private PrayerTimetableRepository prayerTimetableRepository;
@@ -63,8 +72,8 @@ public class UserController {
                 .userId(p.getUser() != null ? p.getUser().getId() : null)
                 .imamName(p.getUser() != null ? p.getUser().getName() : "Scholar")
                 .phone(p.getUser() != null ? p.getUser().getPhone() : "")
-                .masjidName(p.getMasjidName())
-                .masjidCity(p.getMasjidCity())
+                .masjidName(p.getMosque() != null ? p.getMosque().getName() : p.getMasjidName())
+                .masjidCity(p.getMosque() != null ? p.getMosque().getCity() : p.getMasjidCity())
                 .bio(p.getBio())
                 .fiqhSchool(p.getFiqhSchool())
                 .hijriOffsetDays(p.getHijriOffsetDays())
@@ -99,13 +108,13 @@ public class UserController {
         return ResponseEntity.ok(dtos);
     }
 
-    @GetMapping("/admin/pending-imams")
+    @GetMapping("/admin/imams/pending")
     public ResponseEntity<List<ImamProfileDto>> getPendingImams() {
-        List<ImamProfile> pendingList = imamProfileRepository.findByVerifiedFalse();
-        List<ImamProfileDto> dtos = pendingList.stream().map(this::mapToImamProfileDto).collect(Collectors.toList());
-        return ResponseEntity.ok(dtos);
+        List<ImamProfile> pending = imamProfileRepository.findByVerifiedFalse();
+        return ResponseEntity.ok(pending.stream().map(this::mapToImamProfileDto).collect(Collectors.toList()));
     }
 
+    @Transactional
     @PutMapping("/admin/imams/{imamProfileId}/approve")
     public ResponseEntity<ImamProfileDto> approveImam(@PathVariable UUID imamProfileId) {
         ImamProfile profile = imamProfileRepository.findById(imamProfileId)
@@ -119,6 +128,12 @@ public class UserController {
             user.setRole(Role.ROLE_IMAM);
             user.setSelectedImam(profile);
             userRepository.save(user);
+        }
+
+        if (profile.getMosque() != null) {
+            Mosque m = profile.getMosque();
+            m.setCurrentImam(profile);
+            mosqueRepository.save(m);
         }
 
         return ResponseEntity.ok(mapToImamProfileDto(profile));
@@ -146,6 +161,22 @@ public class UserController {
 
     private void purgeImamProfileData(ImamProfile profile) {
         UUID imamProfileId = profile.getId();
+
+        // 0. Unlink from Mosque if associated
+        if (profile.getMosque() != null) {
+            Mosque m = profile.getMosque();
+            m.setCurrentImam(null);
+            mosqueRepository.save(m);
+            profile.setMosque(null);
+        }
+
+        List<Mosque> mosquesWithImam = mosqueRepository.findAll().stream()
+                .filter(m -> m.getCurrentImam() != null && m.getCurrentImam().getId().equals(imamProfileId))
+                .collect(Collectors.toList());
+        for (Mosque m : mosquesWithImam) {
+            m.setCurrentImam(null);
+            mosqueRepository.save(m);
+        }
 
         // 1. Unlink any users/followers who selected this imam or mosque via direct SQL bulk update
         userRepository.unlinkFollowersByImamProfileId(imamProfileId);
@@ -196,6 +227,45 @@ public class UserController {
                 redisTemplate.delete("active-statuses:" + imamProfileId);
             } catch (Exception ignored) {}
         }
+    }
+
+    /**
+     * When an Imam disassociates from their Mosque:
+     * - The Imam is unlinked from the Mosque.
+     * - The Mosque remains available in the system for other Imams.
+     * - The user is reverted to a normal user (ROLE_USER).
+     * - Fresh JWT tokens reflecting ROLE_USER are issued and returned.
+     */
+    @Transactional
+    @PostMapping("/imam/disassociate")
+    @PreAuthorize("hasAnyRole('IMAM', 'ADMIN')")
+    public ResponseEntity<AuthResponse> disassociateImam(@AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).build();
+        }
+
+        User user = userRepository.findById(userDetails.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + userDetails.getId()));
+
+        Optional<ImamProfile> profileOpt = imamProfileRepository.findByUserId(user.getId());
+        if (profileOpt.isPresent()) {
+            ImamProfile profile = profileOpt.get();
+            purgeImamProfileData(profile);
+        } else {
+            user.setRole(Role.ROLE_USER);
+            user.setSelectedImam(null);
+            user = userRepository.save(user);
+        }
+
+        // Generate updated credentials reflecting standard congregant role
+        String newAccessToken = jwtUtils.generateAccessToken(user.getId(), user.getPhone(), Role.ROLE_USER.name());
+        String newRefreshToken = jwtUtils.generateRefreshToken(user.getId());
+
+        return ResponseEntity.ok(AuthResponse.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshToken)
+                .user(authService.mapToUserDto(user))
+                .build());
     }
 
     @GetMapping("/users/my-imam-status")

@@ -1,5 +1,7 @@
 package com.codominator.angusmasail.ui
 
+import androidx.compose.ui.text.style.TextOverflow
+
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
@@ -40,6 +42,8 @@ import com.codominator.angusmasail.ui.home.HomeScreen
 import com.codominator.angusmasail.ui.imam.AvailableImamsScreen
 import com.codominator.angusmasail.ui.imam.ImamDashboardScreen
 import com.codominator.angusmasail.ui.imam.ImamRegistrationDialog
+import com.codominator.angusmasail.ui.mosque.RegisterMosqueDialog
+import com.codominator.angusmasail.network.MosqueDto
 import com.codominator.angusmasail.ui.library.LibraryScreen
 import com.codominator.angusmasail.ui.masail.MasailSubmitScreen
 import com.codominator.angusmasail.ui.qibla.QiblaScreen
@@ -85,6 +89,7 @@ fun MainAppContainer(viewModel: MainViewModel) {
     var showPendingApprovalDialog by remember { mutableStateOf(false) }
     var showContactDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showRegisterMosqueDialog by remember { mutableStateOf(false) }
 
     val imams by viewModel.imams.collectAsState()
     val selectedImam by viewModel.selectedImam.collectAsState()
@@ -94,6 +99,7 @@ fun MainAppContainer(viewModel: MainViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val imamQueries by viewModel.imamQueries.collectAsState()
     val surahs by viewModel.surahs.collectAsState()
+    val mosques by viewModel.mosques.collectAsState()
 
     var readerSurahNumber by remember { mutableStateOf(1) }
     var readerInitialAyah by remember { mutableStateOf<Int?>(null) }
@@ -592,7 +598,8 @@ fun MainAppContainer(viewModel: MainViewModel) {
                             if (userRole == "ROLE_IMAM") {
                                 ImamDashboardScreen(
                                     viewModel = viewModel,
-                                    onNavigateToChat = { currentDestination = NavDestination.CHAT }
+                                    onNavigateToChat = { currentDestination = NavDestination.CHAT },
+                                    onDisassociated = { currentDestination = NavDestination.HOME }
                                 )
                             } else {
                                 MasailSubmitScreen(
@@ -615,7 +622,8 @@ fun MainAppContainer(viewModel: MainViewModel) {
                         )
                         NavDestination.IMAM_DASHBOARD -> ImamDashboardScreen(
                             viewModel = viewModel,
-                            onNavigateToChat = { currentDestination = NavDestination.CHAT }
+                            onNavigateToChat = { currentDestination = NavDestination.CHAT },
+                            onDisassociated = { currentDestination = NavDestination.HOME }
                         )
                         NavDestination.ADMIN_DASHBOARD -> AdminDashboardScreen(
                             viewModel = viewModel,
@@ -807,12 +815,54 @@ fun MainAppContainer(viewModel: MainViewModel) {
                     .fillMaxWidth()
                     .padding(24.dp)
             ) {
-                Text("Select Mosque / Imam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Select Mosque / Congregation", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Choose a mosque to sync prayers & announcements", fontSize = 12.sp, color = TextSecondary)
+                    }
+                    Button(
+                        onClick = {
+                            if (currentUser == null) {
+                                Toast.makeText(context, "Please log in to register a mosque", Toast.LENGTH_SHORT).show()
+                                showLoginDialog = true
+                            } else {
+                                showRegisterMosqueDialog = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = IslamicGold,
+                            contentColor = DeepEmerald
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Rounded.AddLocationAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("+ Register", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
                 Spacer(modifier = Modifier.height(16.dp))
 
-                if (imams.isEmpty()) {
-                    Text("No Mosques found", color = TextSecondary)
-                } else {
+                if (mosques.isNotEmpty()) {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(mosques, key = { it.id }) { mosque ->
+                            val isSelected = mosque.name.equals(selectedImam?.masjidName, ignoreCase = true) || mosque.id == selectedImam?.id
+                            MosqueSelectionItem(
+                                mosque = mosque,
+                                isSelected = isSelected,
+                                onSelect = {
+                                    viewModel.selectMosque(mosque)
+                                    showImamSelectSheet = false
+                                    Toast.makeText(context, "Synced to ${mosque.name}", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                    }
+                } else if (imams.isNotEmpty()) {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(imams, key = { it.id }) { imam ->
                             ImamSelectionItem(
@@ -826,9 +876,23 @@ fun MainAppContainer(viewModel: MainViewModel) {
                             )
                         }
                     }
+                } else {
+                    Text("No Mosques found", color = TextSecondary)
                 }
             }
         }
+    }
+
+    if (showRegisterMosqueDialog) {
+        RegisterMosqueDialog(
+            viewModel = viewModel,
+            onDismiss = { showRegisterMosqueDialog = false },
+            onSuccess = {
+                showRegisterMosqueDialog = false
+                viewModel.fetchMosques()
+                viewModel.fetchAvailableMosques()
+            }
+        )
     }
 
     // 5. Books & Resources Sheet
@@ -1159,6 +1223,70 @@ fun FloatingBottomNavigation(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+fun MosqueSelectionItem(
+    mosque: MosqueDto,
+    isSelected: Boolean,
+    onSelect: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .bouncingClickable { onSelect() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) BgGoldTint else PureCream
+        ),
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.5.dp, IslamicGold) else androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0D7C6))
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        mosque.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    if (mosque.verified) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(Icons.Rounded.Verified, contentDescription = "Verified", tint = IslamicGold, modifier = Modifier.size(16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = "${mosque.city}${if (!mosque.address.isNullOrBlank()) " • ${mosque.address}" else ""} • ${mosque.fiqhSchool ?: "Sunni"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                val imamText = if (mosque.hasImam && !mosque.currentImamName.isNullOrBlank()) "Imam: ${mosque.currentImamName}" else "Open (No Imam Assigned)"
+                val imamColor = if (mosque.hasImam) DeepEmerald else TextSecondary
+                Text(
+                    text = imamText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = imamColor
+                )
+            }
+            if (isSelected) {
+                Icon(Icons.Rounded.CheckCircle, contentDescription = "Selected", tint = IslamicGold)
             }
         }
     }
