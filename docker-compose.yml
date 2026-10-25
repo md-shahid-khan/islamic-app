@@ -23,6 +23,7 @@ services:
     image: ${DOCKER_IMAGE:-angusmasail-backend:latest}
     container_name: angus_backend
     environment:
+      JAVA_OPTS: "-Xmx512m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/angusmasail
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-password}
