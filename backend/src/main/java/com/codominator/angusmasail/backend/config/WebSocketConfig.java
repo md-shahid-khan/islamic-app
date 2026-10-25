@@ -18,7 +18,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Chat clients will connect to this endpoint
+        // Native mobile WebSocket clients (OkHttp / Ktor)
+        registry.addEndpoint("/ws/chat")
+                .setAllowedOriginPatterns("*");
+
+        // Web SockJS fallback clients
         registry.addEndpoint("/ws/chat")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
