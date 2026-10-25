@@ -24,11 +24,10 @@ object ApiClient {
         try {
             chain.proceed(requestWithAuth)
         } catch (e: IOException) {
-            // Intelligent failover between WiFi IP, ADB Reverse (127.0.0.1), and Emulator (10.0.2.2)
+            // Fallback between production domain and local IP if offline
             val altHost = when (originalUrl.host) {
-                "192.168.8.34" -> "127.0.0.1"
-                "127.0.0.1", "localhost" -> "192.168.8.34"
-                "10.0.2.2" -> "192.168.8.34"
+                "angus.iamshahid.pro" -> "10.0.2.2"
+                "10.0.2.2", "127.0.0.1", "localhost" -> "angus.iamshahid.pro"
                 else -> null
             }
 
@@ -47,11 +46,11 @@ object ApiClient {
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         })
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    const val BASE_URL = "http://192.168.8.34:8080"
+    const val BASE_URL = "https://angus.iamshahid.pro"
 
     fun resolveMediaUrl(path: String?): String? {
         if (path.isNullOrBlank()) return null
