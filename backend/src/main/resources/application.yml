@@ -1,0 +1,35 @@
+server:
+  port: ${PORT:8080}
+
+spring:
+  application:
+    name: angusmasail-backend
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/angusmasail}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:4b29bb88b3f81e3a6c813589b276707328ff9029a1b8ed83427f8a7e0892c575a89f9202a}
+    expirationMs: ${APP_JWT_EXPIRATION_MS:86400000} # 24 hours
+    refreshExpirationMs: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000} # 7 days
+  upload:
+    dir: ${APP_UPLOAD_DIR:./uploads}

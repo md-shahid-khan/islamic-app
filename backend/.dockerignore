@@ -1,0 +1,7 @@
+.gradle
+build/reports
+build/test-results
+.idea
+*.iml
+.git
+.gitignore
