@@ -24,6 +24,24 @@ if [ ! -f .env ]; then
     fi
 fi
 
+# Automatically sync sensitive environment variables if passed from CI/CD
+update_env_key() {
+    local key="$1"
+    local val="$2"
+    if [ -n "$val" ]; then
+        if grep -q "^${key}=" .env; then
+            sed -i "s|^${key}=.*|${key}=${val}|" .env
+        else
+            echo "${key}=${val}" >> .env
+        fi
+    fi
+}
+
+update_env_key "SPRING_MAIL_USERNAME" "${SPRING_MAIL_USERNAME:-}"
+update_env_key "SPRING_MAIL_PASSWORD" "${SPRING_MAIL_PASSWORD:-}"
+update_env_key "DB_PASSWORD" "${DB_PASSWORD:-}"
+update_env_key "APP_JWT_SECRET" "${APP_JWT_SECRET:-}"
+
 # Ensure docker compose is available
 if ! command -v docker &> /dev/null; then
     echo "❌ ERROR: Docker is not installed on this EC2 instance."
@@ -59,6 +77,7 @@ COUNT=0
 while [ $COUNT -lt $MAX_ATTEMPTS ]; do
     if curl -s -f "http://127.0.0.1:8080/health" > /dev/null 2>&1 || curl -s -f "http://127.0.0.1/health" > /dev/null 2>&1; then
         echo "✅ Backend health check passed! (returned 200 OK)"
+        docker compose exec -T -u root backend chown -R spring:spring /app/uploads >/dev/null 2>&1 || true
         break
     fi
     COUNT=$((COUNT + 1))

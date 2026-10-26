@@ -175,7 +175,12 @@ jobs:
 
           # Run automated rollout script
           echo "🚀 Executing deployment script on EC2..."
-          ssh -F ~/.ssh/config "$TARGET_USER@ec2-target" "cd ~/angusmasail && chmod +x deploy-ec2.sh && ./deploy-ec2.sh"
+          ssh -F ~/.ssh/config "$TARGET_USER@ec2-target" "cd ~/angusmasail && chmod +x deploy-ec2.sh && \
+            SPRING_MAIL_USERNAME='${{ secrets.SPRING_MAIL_USERNAME }}' \
+            SPRING_MAIL_PASSWORD='${{ secrets.SPRING_MAIL_PASSWORD }}' \
+            DB_PASSWORD='${{ secrets.DB_PASSWORD }}' \
+            APP_JWT_SECRET='${{ secrets.APP_JWT_SECRET }}' \
+            ./deploy-ec2.sh"
 
   # ============================================================================
   # 4. BUILD ANDROID DEBUG & RELEASE APKS
