@@ -4,6 +4,9 @@ import com.codominator.angusmasail.backend.dto.MasailQueryDto;
 import com.codominator.angusmasail.backend.entity.*;
 import com.codominator.angusmasail.backend.exception.ResourceNotFoundException;
 import com.codominator.angusmasail.backend.repository.ImamProfileRepository;
+import com.codominator.angusmasail.backend.repository.MosqueRepository;
+import com.codominator.angusmasail.backend.entity.Mosque;
+import java.util.Optional;
 import com.codominator.angusmasail.backend.repository.MasailQueryRepository;
 import com.codominator.angusmasail.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +34,9 @@ public class MasailQueryService {
     private ImamProfileRepository imamProfileRepository;
 
     @Autowired
+    private MosqueRepository mosqueRepository;
+
+    @Autowired
     private NotificationService notificationService;
 
     private static final List<String> URGENT_KEYWORDS = List.of(
@@ -56,6 +62,17 @@ public class MasailQueryService {
         ImamProfile imamProfile = null;
         if (imamProfileId != null) {
             imamProfile = imamProfileRepository.findById(imamProfileId).orElse(null);
+            if (imamProfile == null) {
+                Optional<Mosque> mOpt = mosqueRepository.findById(imamProfileId);
+                if (mOpt.isPresent() && mOpt.get().getCurrentImam() != null) {
+                    imamProfile = mOpt.get().getCurrentImam();
+                } else {
+                    List<ImamProfile> list = imamProfileRepository.findByMosqueId(imamProfileId);
+                    if (!list.isEmpty()) {
+                        imamProfile = list.get(0);
+                    }
+                }
+            }
         }
         if (imamProfile == null && user.getSelectedImam() != null) {
             imamProfile = user.getSelectedImam();

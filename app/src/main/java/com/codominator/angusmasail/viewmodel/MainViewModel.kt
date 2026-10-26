@@ -16,10 +16,39 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+data class InAppNotification(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String,
+    val message: String,
+    val targetScreen: String = "CHAT",
+    val requestId: String? = null,
+    val queryId: String? = null,
+    val isImamAction: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _imams = MutableStateFlow<List<ImamProfileDto>>(emptyList())
     val imams: StateFlow<List<ImamProfileDto>> = _imams
+
+    private val _currentInAppNotification = MutableStateFlow<InAppNotification?>(null)
+    val currentInAppNotification: StateFlow<InAppNotification?> = _currentInAppNotification
+
+    fun dismissInAppNotification() {
+        _currentInAppNotification.value = null
+    }
+
+    fun triggerInAppNotification(notification: InAppNotification) {
+        _currentInAppNotification.value = notification
+    }
+
+    private var knownImamRequestIds = setOf<String>()
+    private var knownImamQueryIds = setOf<String>()
+    private var knownUserRequestStatuses = mapOf<String, String>()
+    private var knownUserQueryStatuses = mapOf<String, String>()
+    private var knownMessageIds = setOf<String>()
+    private var realtimeSyncJob: kotlinx.coroutines.Job? = null
 
     private val _pendingImams = MutableStateFlow<List<ImamProfileDto>>(emptyList())
     val pendingImams: StateFlow<List<ImamProfileDto>> = _pendingImams
@@ -123,6 +152,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         fetchMosques()
         fetchAvailableMosques()
         restoreUserSession()
+        startRealtimeSync()
     }
 
     private fun applyUserSession(user: UserDto) {
@@ -131,6 +161,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val updatedUser = user.copy(role = effectiveRole, isImamVerified = if (isImam) true else user.isImamVerified)
         _currentUser.value = updatedUser
         _userRole.value = effectiveRole
+        startRealtimeSync()
         viewModelScope.launch {
             fetchImamsAndSetDefault()
             if (effectiveRole == "ROLE_IMAM") {
@@ -1103,7 +1134,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             try {
-                val effectiveImamId = targetImamProfileId ?: _selectedImam.value?.id
+                val effectiveImamId = targetImamProfileId ?: _selectedImam.value?.id ?: _currentUser.value?.selectedImamProfileId
                 val res = ApiClient.api.requestChat(initialReason, imamProfileId = effectiveImamId, mediaUrl = mediaUrl)
                 if (res.isSuccessful && res.body() != null) {
                     val newReq = res.body()!!
@@ -1321,19 +1352,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 if (_currentUser.value != null) {
                     try {
-                        ApiClient.api.selectMosque(mosque.id)
+                        val res = ApiClient.api.selectMosque(mosque.id)
+                        if (res.isSuccessful && res.body() != null) {
+                            applyUserSession(res.body()!!)
+                        }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }
-                val matchingImam = _imams.value.find { it.masjidName.equals(mosque.name, ignoreCase = true) }
+                val targetImamId = mosque.currentImamId
+                val matchingImam = _imams.value.find { 
+                    (targetImamId != null && it.id == targetImamId) ||
+                    it.masjidName.equals(mosque.name, ignoreCase = true) 
+                }
                 if (matchingImam != null) {
                     selectImam(matchingImam)
-                } else {
-                    val mosqueAsImam = ImamProfileDto(
-                        id = mosque.id,
+                } else if (!targetImamId.isNullOrBlank()) {
+                    val resolvedImam = ImamProfileDto(
+                        id = targetImamId,
                         userId = "",
-                        imamName = mosque.currentImamName ?: "Congregation Mosque",
+                        imamName = mosque.currentImamName ?: "Imam of ${mosque.name}",
                         phone = null,
                         masjidName = mosque.name,
                         masjidCity = mosque.city,
@@ -1342,10 +1380,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         hijriOffsetDays = mosque.hijriOffsetDays,
                         verified = mosque.verified
                     )
-                    TokenManager.saveImamProfileId(getApplication(), mosque.id)
-                    _selectedImam.value = mosqueAsImam
-                    fetchAllDataForImam(mosque.id)
+                    TokenManager.saveImamProfileId(getApplication(), targetImamId)
+                    _selectedImam.value = resolvedImam
+                    fetchAllDataForImam(targetImamId)
                 }
+                fetchImamsAndSetDefault()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1374,4 +1413,130 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun startRealtimeSync() {
+        realtimeSyncJob?.cancel()
+        realtimeSyncJob = viewModelScope.launch {
+            while (true) {
+                try {
+                    val user = _currentUser.value
+                    val role = _userRole.value
+                    if (user != null) {
+                        val isImam = role == "ROLE_IMAM" || user.isImamVerified == true || user.role == "ROLE_IMAM"
+                        if (isImam) {
+                            // --- 1. IMAM REALTIME SYNC ---
+                            val reqRes = ApiClient.api.getImamChatRequests()
+                            if (reqRes.isSuccessful && reqRes.body() != null) {
+                                val latest = reqRes.body()!!
+                                _imamChatRequests.value = latest
+
+                                val newPending = latest.filter { it.status.equals("PENDING", ignoreCase = true) && !knownImamRequestIds.contains(it.id) }
+                                if (newPending.isNotEmpty() && knownImamRequestIds.isNotEmpty()) {
+                                    val first = newPending.first()
+                                    _currentInAppNotification.value = InAppNotification(
+                                        title = "New Consultation Request",
+                                        message = "${first.userName}: ${first.initialReason.take(65)}",
+                                        targetScreen = "CHAT",
+                                        requestId = first.id,
+                                        isImamAction = true
+                                    )
+                                }
+                                knownImamRequestIds = latest.map { it.id }.toSet()
+                            }
+
+                            val qRes = ApiClient.api.getImamQueries()
+                            if (qRes.isSuccessful && qRes.body() != null) {
+                                val latestQ = qRes.body()!!
+                                _imamQueries.value = latestQ
+
+                                val newQ = latestQ.filter { it.status.equals("PENDING", ignoreCase = true) && !knownImamQueryIds.contains(it.id) }
+                                if (newQ.isNotEmpty() && knownImamQueryIds.isNotEmpty()) {
+                                    val first = newQ.first()
+                                    _currentInAppNotification.value = InAppNotification(
+                                        title = "New Masail Question",
+                                        message = "${first.userNameSnapshot ?: "Congregant"}: ${first.questionText.take(65)}",
+                                        targetScreen = "IMAM_DASHBOARD",
+                                        queryId = first.id,
+                                        isImamAction = true
+                                    )
+                                }
+                                knownImamQueryIds = latestQ.map { it.id }.toSet()
+                            }
+
+                            val activeId = _selectedChatRequestId.value
+                            if (!activeId.isNullOrBlank()) {
+                                val msgRes = ApiClient.api.getChatMessages(activeId)
+                                if (msgRes.isSuccessful && msgRes.body() != null) {
+                                    _activeChatMessages.value = msgRes.body()!!
+                                }
+                            }
+                        } else {
+                            // --- 2. USER REALTIME SYNC ---
+                            val reqRes = ApiClient.api.getMyChatRequests()
+                            if (reqRes.isSuccessful && reqRes.body() != null) {
+                                val latest = reqRes.body()!!
+                                _userChatRequests.value = latest
+
+                                for (req in latest) {
+                                    val prevStatus = knownUserRequestStatuses[req.id]
+                                    if (prevStatus != null && prevStatus.equals("PENDING", ignoreCase = true) && req.status.equals("ACCEPTED", ignoreCase = true)) {
+                                        _currentInAppNotification.value = InAppNotification(
+                                            title = "Consultation Accepted! \uD83C\uDF1F",
+                                            message = "Imam ${req.imamName} has accepted your consultation! Tap to chat now.",
+                                            targetScreen = "CHAT",
+                                            requestId = req.id
+                                        )
+                                    }
+                                }
+                                knownUserRequestStatuses = latest.associate { it.id to it.status }
+                            }
+
+                            val qRes = ApiClient.api.getMyQueries()
+                            if (qRes.isSuccessful && qRes.body() != null) {
+                                val latestQ = qRes.body()!!
+                                _myQueries.value = latestQ
+
+                                for (q in latestQ) {
+                                    val prevStatus = knownUserQueryStatuses[q.id]
+                                    if (prevStatus != null && !prevStatus.equals("RESOLVED", ignoreCase = true) && q.status.equals("RESOLVED", ignoreCase = true)) {
+                                        _currentInAppNotification.value = InAppNotification(
+                                            title = "Masail Answered! \u2705",
+                                            message = "Imam has replied to your Masail inquiry.",
+                                            targetScreen = "MASAIL",
+                                            queryId = q.id
+                                        )
+                                    }
+                                }
+                                knownUserQueryStatuses = latestQ.associate { it.id to it.status }
+                            }
+
+                            val activeId = _selectedChatRequestId.value
+                            if (!activeId.isNullOrBlank()) {
+                                val msgRes = ApiClient.api.getChatMessages(activeId)
+                                if (msgRes.isSuccessful && msgRes.body() != null) {
+                                    val msgs = msgRes.body()!!
+                                    val newMsgs = msgs.filter { it.senderId != user.id && !knownMessageIds.contains(it.id) }
+                                    if (newMsgs.isNotEmpty() && knownMessageIds.isNotEmpty()) {
+                                        val latestMsg = newMsgs.last()
+                                        _currentInAppNotification.value = InAppNotification(
+                                            title = "New message from ${latestMsg.senderName}",
+                                            message = latestMsg.messageText.take(65),
+                                            targetScreen = "CHAT",
+                                            requestId = activeId
+                                        )
+                                    }
+                                    knownMessageIds = msgs.mapNotNull { it.id }.toSet()
+                                    _activeChatMessages.value = msgs
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // ignore network glitches
+                }
+                kotlinx.coroutines.delay(2000L)
+            }
+        }
+    }
+
 }

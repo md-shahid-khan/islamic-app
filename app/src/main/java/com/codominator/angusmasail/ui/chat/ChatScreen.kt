@@ -109,8 +109,9 @@ fun ChatScreen(
 
     val currentChatSession = remember(isImam, selectedChatRequestId, selectedImam, userRequests, imamRequests) {
         if (isImam) {
-            imamRequests.find { it.id == selectedChatRequestId }
-                ?: imamRequests.firstOrNull { it.status.equals("ACCEPTED", ignoreCase = true) }
+            imamRequests.find { it.id == selectedChatRequestId }
+                ?: imamRequests.firstOrNull { it.status.equals("PENDING", ignoreCase = true) }
+                ?: imamRequests.firstOrNull { it.status.equals("ACCEPTED", ignoreCase = true) }
                 ?: imamRequests.firstOrNull()
         } else {
             // Strictly match the selected Imam first!
@@ -372,11 +373,9 @@ fun ChatScreen(
         }
 
         // 2. ACTIVE / RECENT SESSIONS SELECTOR
-        if (isImam) {
-            val activeConsultations = remember(imamRequests) {
-                imamRequests.filter { it.status.equals("ACCEPTED", ignoreCase = true) || it.status.equals("ACTIVE", ignoreCase = true) }
-            }
-            if (activeConsultations.isNotEmpty()) {
+        if (isImam) {
+            val allConsultations = remember(imamRequests) { imamRequests }
+            if (allConsultations.isNotEmpty()) {
                 Surface(
                     color = BgMintTint,
                     modifier = Modifier.fillMaxWidth()
@@ -406,25 +405,26 @@ fun ChatScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            items(activeConsultations, key = { it.id }) { req ->
-                                val isSelected = req.id == currentChatSession?.id
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        viewModel?.selectChatRequest(req.id)
-                                    },
-                                    label = {
-                                        Text(
-                                            text = "${req.userName ?: "Congregant"}: ${req.initialReason.take(14)}...",
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
-                                    modifier = Modifier.height(30.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = DeepEmerald,
-                                        selectedLabelColor = Color.White
-                                    )
+                            items(allConsultations, key = { it.id }) { req ->
+                                val isSelected = req.id == currentChatSession?.id
+                                val isReqPending = req.status.equals("PENDING", ignoreCase = true)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        viewModel?.selectChatRequest(req.id)
+                                    },
+                                    label = {
+                                        Text(
+                                            text = "${if (isReqPending) "⏳ " else "✓ "}${req.userName ?: "Congregant"}: ${req.initialReason.take(14)}...",
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    modifier = Modifier.height(30.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = if (isReqPending) IslamicGold else DeepEmerald,
+                                        selectedLabelColor = Color.White
+                                    )
                                 )
                             }
                         }

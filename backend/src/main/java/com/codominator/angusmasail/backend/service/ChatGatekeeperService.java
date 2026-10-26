@@ -7,6 +7,8 @@ import com.codominator.angusmasail.backend.exception.ResourceNotFoundException;
 import com.codominator.angusmasail.backend.repository.ChatMessageRepository;
 import com.codominator.angusmasail.backend.repository.ChatRequestRepository;
 import com.codominator.angusmasail.backend.repository.ImamProfileRepository;
+import com.codominator.angusmasail.backend.repository.MosqueRepository;
+import java.util.Optional;
 import com.codominator.angusmasail.backend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -35,6 +37,9 @@ public class ChatGatekeeperService {
     private ImamProfileRepository imamProfileRepository;
 
     @Autowired
+    private MosqueRepository mosqueRepository;
+
+    @Autowired
     private NotificationService notificationService;
 
     @Transactional
@@ -56,6 +61,17 @@ public class ChatGatekeeperService {
         ImamProfile imamProfile = null;
         if (imamProfileId != null) {
             imamProfile = imamProfileRepository.findById(imamProfileId).orElse(null);
+            if (imamProfile == null) {
+                Optional<Mosque> mOpt = mosqueRepository.findById(imamProfileId);
+                if (mOpt.isPresent() && mOpt.get().getCurrentImam() != null) {
+                    imamProfile = mOpt.get().getCurrentImam();
+                } else {
+                    List<ImamProfile> list = imamProfileRepository.findByMosqueId(imamProfileId);
+                    if (!list.isEmpty()) {
+                        imamProfile = list.get(0);
+                    }
+                }
+            }
         }
         if (imamProfile == null && user.getSelectedImam() != null) {
             imamProfile = user.getSelectedImam();

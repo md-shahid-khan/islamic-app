@@ -10,6 +10,7 @@ import com.codominator.angusmasail.backend.entity.User;
 import com.codominator.angusmasail.backend.exception.ResourceNotFoundException;
 import com.codominator.angusmasail.backend.repository.MosqueRepository;
 import com.codominator.angusmasail.backend.repository.UserRepository;
+import com.codominator.angusmasail.backend.repository.ImamProfileRepository;
 import com.codominator.angusmasail.backend.service.AuthService;
 import com.codominator.angusmasail.backend.service.MosqueService;
 import jakarta.validation.Valid;
@@ -37,6 +38,9 @@ public class MosqueController {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private ImamProfileRepository imamProfileRepository;
 
     /**
      * Public endpoint: List all registered mosques.
@@ -96,6 +100,14 @@ public class MosqueController {
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
             ImamProfile imam = mosque.getCurrentImam();
+            if (imam == null) {
+                List<ImamProfile> list = imamProfileRepository.findByMosqueId(mosque.getId());
+                if (!list.isEmpty()) {
+                    imam = list.get(0);
+                    mosque.setCurrentImam(imam);
+                    mosqueRepository.save(mosque);
+                }
+            }
             if (imam != null) {
                 user.setSelectedImam(imam);
             }

@@ -53,7 +53,10 @@ import com.codominator.angusmasail.ui.quran.SurahListScreen
 import com.codominator.angusmasail.ui.theme.*
 import com.codominator.angusmasail.ui.auth.AuthDialog
 import com.codominator.angusmasail.ui.settings.SettingsDialog
-import com.codominator.angusmasail.viewmodel.MainViewModel
+import com.codominator.angusmasail.viewmodel.MainViewModel
+import com.codominator.angusmasail.viewmodel.InAppNotification
+import androidx.compose.ui.zIndex
+
 import kotlinx.coroutines.launch
 
 enum class NavDestination(val label: String, val icon: ImageVector) {
@@ -99,9 +102,28 @@ fun MainAppContainer(viewModel: MainViewModel) {
     val currentUser by viewModel.currentUser.collectAsState()
     val isImam = userRole == "ROLE_IMAM" || currentUser?.isImamVerified == true || currentUser?.role == "ROLE_IMAM"
     val isAdmin = userRole == "ROLE_ADMIN" || currentUser?.role == "ROLE_ADMIN"
-    val imamQueries by viewModel.imamQueries.collectAsState()
-    val surahs by viewModel.surahs.collectAsState()
-    val mosques by viewModel.mosques.collectAsState()
+    val imamQueries by viewModel.imamQueries.collectAsState()
+    val surahs by viewModel.surahs.collectAsState()
+    val mosques by viewModel.mosques.collectAsState()
+    val imamChatRequests by viewModel.imamChatRequests.collectAsState()
+    val currentInAppNotification by viewModel.currentInAppNotification.collectAsState()
+
+    val pendingChatRequestsCount = remember(imamChatRequests) {
+        imamChatRequests.count { it.status.equals("PENDING", ignoreCase = true) }
+    }
+
+    LaunchedEffect(currentInAppNotification?.id) {
+        val notif = currentInAppNotification
+        if (notif != null) {
+            try {
+                val notificationUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                val ringtone = android.media.RingtoneManager.getRingtone(context, notificationUri)
+                ringtone?.play()
+            } catch (_: Exception) {}
+            kotlinx.coroutines.delay(5000L)
+            viewModel.dismissInAppNotification()
+        }
+    }
 
     var readerSurahNumber by remember { mutableStateOf(1) }
     var readerInitialAyah by remember { mutableStateOf<Int?>(null) }
@@ -496,13 +518,14 @@ fun MainAppContainer(viewModel: MainViewModel) {
         Scaffold(
             bottomBar = {
                 if (currentDestination != NavDestination.QURAN_READER) {
-                    FloatingBottomNavigation(
-                        currentDestination = currentDestination,
-                        userRole = userRole,
-                        isImam = isImam,
-                        isAdmin = isAdmin,
-                        pendingQueriesCount = pendingQueriesCount,
-                        onNavigate = { currentDestination = it }
+                    FloatingBottomNavigation(
+                        currentDestination = currentDestination,
+                        userRole = userRole,
+                        isImam = isImam,
+                        isAdmin = isAdmin,
+                        pendingQueriesCount = pendingQueriesCount,
+                        pendingChatRequestsCount = pendingChatRequestsCount,
+                        onNavigate = { currentDestination = it }
                     )
                 }
             }
@@ -624,12 +647,33 @@ fun MainAppContainer(viewModel: MainViewModel) {
                             onSurahChanged = { newSurah -> readerSurahNumber = newSurah },
                             onBack = { currentDestination = NavDestination.QURAN_SURAHS }
                         )
-                        NavDestination.LIBRARY -> LibraryScreen(
-                            viewModel = viewModel,
-                            onBack = { currentDestination = NavDestination.HOME }
-                        )
-                    }
-                }
+                        NavDestination.LIBRARY -> LibraryScreen(
+                            viewModel = viewModel,
+                            onBack = { currentDestination = NavDestination.HOME }
+                        )
+                    }
+                }
+
+                InAppNotificationBanner(
+                    notification = currentInAppNotification,
+                    onDismiss = { viewModel.dismissInAppNotification() },
+                    onAction = { target, reqId, qId ->
+                        when (target) {
+                            "CHAT" -> {
+                                if (!reqId.isNullOrBlank()) {
+                                    viewModel.selectChatRequest(reqId)
+                                }
+                                currentDestination = NavDestination.CHAT
+                            }
+                            "IMAM_DASHBOARD" -> {
+                                currentDestination = NavDestination.IMAM_DASHBOARD
+                            }
+                            "MASAIL" -> {
+                                currentDestination = NavDestination.MASAIL
+                            }
+                        }
+                    }
+                )
             }
         }
     }
@@ -1084,14 +1128,15 @@ fun ImamSelectionItem(imam: ImamProfileDto, isSelected: Boolean, onSelect: () ->
     }
 }
 
-@Composable
-fun FloatingBottomNavigation(
-    currentDestination: NavDestination,
-    userRole: String,
-    isImam: Boolean = userRole == "ROLE_IMAM",
-    isAdmin: Boolean = userRole == "ROLE_ADMIN",
-    pendingQueriesCount: Int,
-    onNavigate: (NavDestination) -> Unit
+@Composable
+fun FloatingBottomNavigation(
+    currentDestination: NavDestination,
+    userRole: String,
+    isImam: Boolean = userRole == "ROLE_IMAM",
+    isAdmin: Boolean = userRole == "ROLE_ADMIN",
+    pendingQueriesCount: Int,
+    pendingChatRequestsCount: Int = 0,
+    onNavigate: (NavDestination) -> Unit
 ) {
     // When logged in as IMAM: show Home, Qibla, Inquiries (Dashboard Queue), Consult Chats, Library (NO Masail form!)
     // When logged in as USER: show Home, Qibla, Masail (Ask Question), Chat, Available Imams
@@ -1148,10 +1193,11 @@ fun FloatingBottomNavigation(
                         else -> destination.label
                     }
 
-                    val destIcon = when {
-                        isImam && destination == NavDestination.IMAM_DASHBOARD && pendingQueriesCount > 0 -> Icons.Rounded.NotificationsActive
-                        isImam && destination == NavDestination.IMAM_DASHBOARD -> Icons.Rounded.QuestionAnswer
-                        else -> destination.icon
+                    val destIcon = when {
+                        isImam && destination == NavDestination.IMAM_DASHBOARD && pendingQueriesCount > 0 -> Icons.Rounded.NotificationsActive
+                        isImam && destination == NavDestination.IMAM_DASHBOARD -> Icons.Rounded.QuestionAnswer
+                        isImam && destination == NavDestination.CHAT && pendingChatRequestsCount > 0 -> Icons.Rounded.NotificationsActive
+                        else -> destination.icon
                     }
 
                     Column(
@@ -1160,17 +1206,24 @@ fun FloatingBottomNavigation(
                             .bouncingClickable { onNavigate(destination) }
                             .padding(horizontal = 6.dp, vertical = 6.dp)
                     ) {
-                        BadgedBox(
-                            badge = {
-                                if (destination == NavDestination.IMAM_DASHBOARD && pendingQueriesCount > 0) {
-                                    Badge(
-                                        containerColor = Color(0xFFC0392B),
-                                        contentColor = Color.White
-                                    ) {
-                                        Text("$pendingQueriesCount", fontSize = 9.sp)
-                                    }
-                                }
-                            }
+                        BadgedBox(
+                            badge = {
+                                if (destination == NavDestination.IMAM_DASHBOARD && pendingQueriesCount > 0) {
+                                    Badge(
+                                        containerColor = Color(0xFFC0392B),
+                                        contentColor = Color.White
+                                    ) {
+                                        Text("$pendingQueriesCount", fontSize = 9.sp)
+                                    }
+                                } else if (destination == NavDestination.CHAT && isImam && pendingChatRequestsCount > 0) {
+                                    Badge(
+                                        containerColor = Color(0xFFC0392B),
+                                        contentColor = Color.White
+                                    ) {
+                                        Text("$pendingChatRequestsCount", fontSize = 9.sp)
+                                    }
+                                }
+                            }
                         ) {
                             Icon(
                                 imageVector = destIcon,
@@ -1256,3 +1309,84 @@ fun MosqueSelectionItem(
         }
     }
 }
+
+
+@Composable
+fun BoxScope.InAppNotificationBanner(
+    notification: InAppNotification?,
+    onDismiss: () -> Unit,
+    onAction: (target: String, reqId: String?, qId: String?) -> Unit
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = notification != null,
+        enter = androidx.compose.animation.slideInVertically(initialOffsetY = { -it }) + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { -it }) + androidx.compose.animation.fadeOut(),
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .padding(top = 12.dp, start = 16.dp, end = 16.dp)
+            .zIndex(99f)
+    ) {
+        if (notification != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bouncingClickable {
+                        onAction(notification.targetScreen, notification.requestId, notification.queryId)
+                        onDismiss()
+                    },
+                colors = CardDefaults.cardColors(
+                    containerColor = DeepEmerald
+                ),
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(IslamicGold.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.NotificationsActive,
+                            contentDescription = null,
+                            tint = IslamicGold,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = notification.title,
+                            color = IslamicGold,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = notification.message,
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Dismiss",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

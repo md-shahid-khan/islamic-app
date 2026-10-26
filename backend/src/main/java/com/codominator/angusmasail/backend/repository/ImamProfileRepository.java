@@ -15,4 +15,5 @@ public interface ImamProfileRepository extends JpaRepository<ImamProfile, UUID> 
     List<ImamProfile> findByFiqhSchoolContainingIgnoreCase(String fiqhSchool);
     List<ImamProfile> findByVerifiedFalse();
     List<ImamProfile> findByVerifiedTrue();
+    List<ImamProfile> findByMosqueId(UUID mosqueId);
 }
