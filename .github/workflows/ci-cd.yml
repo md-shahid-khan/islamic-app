@@ -1,0 +1,173 @@
+name: Angus Masail CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # 1. BUILD & TEST BACKEND (Spring Boot 3.3.5 / Java 21)
+  # ============================================================================
+  backend-build:
+    name: Build Backend JAR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Spring Boot executable JAR
+        run: ./gradlew :backend:bootJar -x test --no-daemon
+
+      - name: Upload Backend JAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: angus-backend-jar
+          path: backend/build/libs/backend-*.jar
+          retention-days: 14
+
+  # ============================================================================
+  # 2. BUILD & PUSH DOCKER IMAGE TO DOCKER HUB
+  # ============================================================================
+  docker-build-push:
+    name: Build & Push Docker Image
+    needs: backend-build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME || 'codominator' }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: codominator/angusmasail-backend
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push production Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================================
+  # 3. DEPLOY TO AWS EC2 INSTANCE VIA SSH
+  # ============================================================================
+  deploy-ec2:
+    name: Deploy to AWS EC2
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check EC2 Secrets Availability
+        id: check-secrets
+        run: |
+          if [ -n "${{ secrets.EC2_HOST }}" ] && [ -n "${{ secrets.EC2_SSH_KEY }}" ]; then
+            echo "configured=true" >> $GITHUB_OUTPUT
+            echo "✅ EC2 deployment credentials are configured."
+          else
+            echo "configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️ EC2_HOST or EC2_SSH_KEY not set. Skipping automatic EC2 deployment."
+          fi
+
+      - name: Sync deployment files to EC2
+        if: steps.check-secrets.outputs.configured == 'true'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          source: "docker-compose.yml,deploy-ec2.sh,.env.example,docker/**"
+          target: "~/angusmasail"
+
+      - name: Execute rollout on EC2 via SSH
+        if: steps.check-secrets.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script: |
+            cd ~/angusmasail
+            chmod +x deploy-ec2.sh
+            ./deploy-ec2.sh
+
+  # ============================================================================
+  # 4. BUILD ANDROID DEBUG & RELEASE APKS
+  # ============================================================================
+  android-build:
+    name: Build Android APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Assemble Android Debug & Release APKs
+        run: ./gradlew :app:assembleDebug :app:assembleRelease -x test --no-daemon
+
+      - name: Upload Android APKs Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: angusmasail-android-apks
+          path: app/build/outputs/apk/**/*.apk
+          retention-days: 14

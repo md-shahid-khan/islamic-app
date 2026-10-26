@@ -23,6 +23,7 @@ services:
     image: ${DOCKER_IMAGE:-codominator/angusmasail-backend:latest}
     container_name: angus_backend
     environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       JAVA_OPTS: "-Xmx384m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom --enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/angusmasail
       SPRING_DATASOURCE_USERNAME: postgres

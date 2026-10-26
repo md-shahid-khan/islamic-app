@@ -5,49 +5,28 @@ spring:
   application:
     name: angusmasail-backend
 
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
 
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/angusmasail}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:password}
-    driver-class-name: org.postgresql.Driver
-
   jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: false
-
-  data:
-    redis:
-      host: ${SPRING_DATA_REDIS_HOST:localhost}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-
-  mail:
-    host: ${SPRING_MAIL_HOST:localhost}
-    port: ${SPRING_MAIL_PORT:587}
-    username: ${SPRING_MAIL_USERNAME:}
-    password: ${SPRING_MAIL_PASSWORD:}
+    open-in-view: false
     properties:
-      mail:
-        smtp:
-          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:false}
-          starttls:
-            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:false}
-          connectiontimeout: 3000
-          timeout: 3000
-          writetimeout: 3000
+      hibernate:
+        jdbc:
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
 
 app:
   jwt:
     secret: ${APP_JWT_SECRET:4b29bb88b3f81e3a6c813589b276707328ff9029a1b8ed83427f8a7e0892c575a89f9202a}
     expirationMs: ${APP_JWT_EXPIRATION_MS:86400000} # 24 hours
     refreshExpirationMs: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000} # 7 days
-  upload:
-    dir: ${APP_UPLOAD_DIR:./uploads}
   admin:
     # Multiple admins format: email:password:name:phone, separated by comma
     users: ${APP_ADMIN_USERS:admin@angusmasail.com:Admin@123:Super Admin:9999999999}

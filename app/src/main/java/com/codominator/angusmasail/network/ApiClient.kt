@@ -1,5 +1,7 @@
 package com.codominator.angusmasail.network
 
+import com.codominator.angusmasail.BuildConfig
+
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -51,21 +53,26 @@ object ApiClient {
         .writeTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    // Set to true for fast local development (runs against your local IntelliJ backend)
-    // Set to false for remote production deployment (https://angus.iamshahid.pro)
-    const val USE_LOCAL_DEV = true
+    // Environment-aware configuration:
+    // Debug builds default to local dev backend (http://127.0.0.1:8080/)
+    // Release builds default to production backend (https://angus.iamshahid.pro/)
+    val PROD_URL: String get() = BuildConfig.PROD_URL
+    val LOCAL_URL: String get() = BuildConfig.DEV_URL
 
-    const val PROD_URL = "https://angus.iamshahid.pro/"
-    const val LOCAL_URL = "http://127.0.0.1:8080/"
+    // Developer runtime override if needed
+    var runtimeDevOverride: Boolean? = null
+
+    val isDevEnvironment: Boolean
+        get() = runtimeDevOverride ?: (!BuildConfig.IS_PROD)
 
     val BASE_URL: String
-        get() = if (USE_LOCAL_DEV) LOCAL_URL else PROD_URL
+        get() = if (isDevEnvironment) LOCAL_URL else PROD_URL
 
     fun resolveMediaUrl(path: String?): String? {
         if (path.isNullOrBlank()) return null
         if (path.startsWith("http://") || path.startsWith("https://")) return path
         val cleanPath = if (path.startsWith("/")) path else "/$path"
-        val base = if (USE_LOCAL_DEV) LOCAL_URL.trimEnd('/') else PROD_URL.trimEnd('/')
+        val base = BASE_URL.trimEnd('/')
         return "$base$cleanPath"
     }
 

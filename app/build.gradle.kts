@@ -16,10 +16,22 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "PROD_URL", "\"https://angus.iamshahid.pro/\"")
+        buildConfigField("String", "DEV_URL", "\"http://127.0.0.1:8080/\"")
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "BASE_URL", "\"http://127.0.0.1:8080/\"")
+            buildConfigField("Boolean", "IS_PROD", "false")
+            buildConfigField("String", "ENVIRONMENT", "\"DEV\"")
+            versionNameSuffix = "-dev"
+        }
         release {
+            buildConfigField("String", "BASE_URL", "\"https://angus.iamshahid.pro/\"")
+            buildConfigField("Boolean", "IS_PROD", "true")
+            buildConfigField("String", "ENVIRONMENT", "\"PROD\"")
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -33,6 +45,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.11"
@@ -59,11 +72,15 @@ dependencies {
     // Coil (Image Loading)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // Retrofit & Gson
+    // Retrofit & Networking
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
+    // Location & Play Services
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
