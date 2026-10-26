@@ -35,16 +35,30 @@ echo "📥 [2/5] Pulling latest production Docker image..."
 docker compose pull backend
 
 echo "🔄 [3/5] Restarting services with zero downtime..."
-docker compose up -d --remove-orphans
+# Clean up any conflicting foreign containers from previous manual or differently named runs
+for c in angus_backend angus_nginx angus_db angus_redis; do
+    if docker ps -a --format '{{.Names}}' | grep -Eq "^/?${c}\$"; then
+        CURRENT_PROJ=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$c" 2>/dev/null || echo "")
+        if [ "$CURRENT_PROJ" != "angusmasail" ]; then
+            echo "⚠️ Removing conflicting container: $c (previous project: '${CURRENT_PROJ:-standalone}')"
+            docker rm -f "$c" >/dev/null 2>&1 || true
+        fi
+    fi
+done
+
+if ! docker compose up -d --remove-orphans; then
+    echo "⚠️ Compose conflict detected. Forcing cleanup of stale container names..."
+    docker rm -f angus_db angus_redis angus_backend angus_nginx 2>/dev/null || true
+    docker compose up -d --remove-orphans
+fi
 
 echo "⏳ [4/5] Waiting for backend to become healthy..."
 MAX_ATTEMPTS=24
 COUNT=0
-HEALTH_URL="http://127.0.0.1:8080/health"
 
 while [ $COUNT -lt $MAX_ATTEMPTS ]; do
-    if curl -s -f "$HEALTH_URL" > /dev/null 2>&1; then
-        echo "✅ Backend health check passed! ($HEALTH_URL returned 200 OK)"
+    if curl -s -f "http://127.0.0.1:8080/health" > /dev/null 2>&1 || curl -s -f "http://127.0.0.1/health" > /dev/null 2>&1; then
+        echo "✅ Backend health check passed! (returned 200 OK)"
         break
     fi
     COUNT=$((COUNT + 1))
