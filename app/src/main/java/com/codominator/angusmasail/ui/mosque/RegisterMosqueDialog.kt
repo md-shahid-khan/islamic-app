@@ -228,7 +228,7 @@ fun RegisterMosqueDialog(
                             ),
                             onSuccess = {
                                 isLoading = false
-                                Toast.makeText(context, "Mosque registered successfully!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Mosque application submitted! Awaiting administrator approval.", Toast.LENGTH_LONG).show()
                                 onSuccess()
                                 onDismiss()
                             },

@@ -50,6 +50,15 @@ interface ApiService {
     @GET("/api/v1/admin/pending-imams")
     suspend fun getPendingImams(): Response<List<ImamProfileDto>>
 
+    @GET("/api/v1/admin/pending-mosques")
+    suspend fun getPendingMosques(): Response<List<MosqueDto>>
+
+    @PUT("/api/v1/admin/pending-mosques/{mosqueId}/approve")
+    suspend fun approveMosque(@Path("mosqueId") mosqueId: String): Response<MosqueDto>
+
+    @PUT("/api/v1/admin/pending-mosques/{mosqueId}/reject")
+    suspend fun rejectMosque(@Path("mosqueId") mosqueId: String): Response<Unit>
+
     @PUT("/api/v1/admin/imams/{imamProfileId}/approve")
     suspend fun approveImam(@Path("imamProfileId") imamProfileId: String): Response<ImamProfileDto>
 

@@ -68,7 +68,7 @@ public class EmailService {
         localOtpCache.put(cleanEmail, new OtpEntry(otp, OTP_EXPIRY));
 
         // 2. Dispatch Email
-        sendOtpEmail(cleanEmail, otp);
+        java.util.concurrent.CompletableFuture.runAsync(() -> { try { sendOtpEmail(cleanEmail, otp); } catch (Exception e) { log.warn("Async email error: {}", e.getMessage()); } });
 
         return otp;
     }
@@ -106,7 +106,7 @@ public class EmailService {
                             </p>
                         </div>
                         <div style="background-color: #F8F9FA; padding: 16px; text-align: center; font-size: 11px; color: #888888; border-top: 1px solid #EEEEEE;">
-                            &copy; 2026 Angus Masail Community • Protected by end-to-end encryption
+                            &copy; 2026 Angus Masail Community &bull; Protected by end-to-end encryption
                         </div>
                     </div>
                 """;

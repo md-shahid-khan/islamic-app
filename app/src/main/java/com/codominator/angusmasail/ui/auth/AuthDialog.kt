@@ -356,57 +356,7 @@ fun AuthDialog(
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(16.dp))
 
-                                        // Quick Demo Switchers
-                                        Text(
-                                            "Quick Demo Test Persona:",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TextSecondary
-                                        )
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    loginIdentifier = "1234567890"
-                                                    loginPassword = "password"
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(10.dp),
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                                            ) {
-                                                Text("Imam Demo", fontSize = 11.sp)
-                                            }
-
-                                            OutlinedButton(
-                                                onClick = {
-                                                    loginIdentifier = "0987654321"
-                                                    loginPassword = "password"
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(10.dp),
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                                            ) {
-                                                Text("User Demo", fontSize = 11.sp)
-                                            }
-
-                                            OutlinedButton(
-                                                onClick = {
-                                                    loginIdentifier = "admin"
-                                                    loginPassword = "admin123"
-                                                },
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(10.dp),
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
-                                            ) {
-                                                Text("Admin Demo", fontSize = 11.sp)
-                                            }
-                                        }
                                     } else {
                                         // ================= CREATE ACCOUNT TAB =================
                                         Text(

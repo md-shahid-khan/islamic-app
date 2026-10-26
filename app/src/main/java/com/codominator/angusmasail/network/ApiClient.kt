@@ -46,17 +46,27 @@ object ApiClient {
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         })
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    const val BASE_URL = "https://angus.iamshahid.pro"
+    // Set to true for fast local development (runs against your local IntelliJ backend)
+    // Set to false for remote production deployment (https://angus.iamshahid.pro)
+    const val USE_LOCAL_DEV = true
+
+    const val PROD_URL = "https://angus.iamshahid.pro/"
+    const val LOCAL_URL = "http://127.0.0.1:8080/"
+
+    val BASE_URL: String
+        get() = if (USE_LOCAL_DEV) LOCAL_URL else PROD_URL
 
     fun resolveMediaUrl(path: String?): String? {
         if (path.isNullOrBlank()) return null
         if (path.startsWith("http://") || path.startsWith("https://")) return path
         val cleanPath = if (path.startsWith("/")) path else "/$path"
-        return "$BASE_URL$cleanPath"
+        val base = if (USE_LOCAL_DEV) LOCAL_URL.trimEnd('/') else PROD_URL.trimEnd('/')
+        return "$base$cleanPath"
     }
 
     val api: ApiService by lazy {

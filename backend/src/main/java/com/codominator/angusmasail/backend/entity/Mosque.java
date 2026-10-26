@@ -43,7 +43,7 @@ public class Mosque {
     private Integer hijriOffsetDays = 0;
 
     @Builder.Default
-    private boolean verified = true;
+    private boolean verified = false;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "registered_by_user_id")

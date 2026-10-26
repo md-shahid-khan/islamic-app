@@ -45,6 +45,7 @@ fun AdminDashboardScreen(
     val context = LocalContext.current
     val imams by viewModel.imams.collectAsState()
     val pendingImams by viewModel.pendingImams.collectAsState()
+    val pendingMosques by viewModel.pendingMosques.collectAsState()
     val queries by viewModel.imamQueries.collectAsState()
     val userRole by viewModel.userRole.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
@@ -167,10 +168,139 @@ fun AdminDashboardScreen(
                     )
                     AdminStatCard(
                         title = "Pending",
-                        value = "${pendingImams.size}",
+                        value = "${pendingImams.size + pendingMosques.size}",
                         icon = Icons.Rounded.PendingActions,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            // Empty Queue State
+            if (pendingImams.isEmpty() && pendingMosques.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = BgMintTint.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Rounded.VerifiedUser, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Approval Queues Clear", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DeepEmerald)
+                                Text("No pending Imam or Mosque applications awaiting review.", fontSize = 11.sp, color = TextSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Pending Mosque Registrations Section Awaiting Admin Approval
+            if (pendingMosques.isNotEmpty()) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Pending Mosque Registrations (${pendingMosques.size})",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color(0xFFC0392B)
+                        )
+                        StatusPill(
+                            text = "REQUIRES APPROVAL",
+                            bgColor = Color(0xFFFADBD8),
+                            textColor = Color(0xFFC0392B)
+                        )
+                    }
+                }
+
+                items(pendingMosques, key = { "pending_mosque_${it.id}" }) { mosque ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureCream),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, IslamicGold)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = mosque.name,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = TextPrimary
+                                    )
+                                    Text(
+                                        text = "${mosque.city} • ${mosque.fiqhSchool ?: "Sunni"}",
+                                        fontSize = 12.sp,
+                                        color = DeepEmerald,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                StatusPill(text = "PENDING", bgColor = BgGoldTint, textColor = DeepEmerald)
+                            }
+
+                            if (!mosque.address.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("📍 ${mosque.address}", fontSize = 11.sp, color = TextSecondary)
+                            }
+
+                            if (!mosque.registeredByName.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("👤 Registered by: ${mosque.registeredByName}", fontSize = 11.sp, color = TextSecondary)
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            HorizontalDivider(color = Color(0xFFE8DFD0))
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.rejectMosque(mosque.id) {
+                                            Toast.makeText(context, "Mosque registration rejected", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Reject", fontSize = 12.sp, color = Color(0xFFC0392B))
+                                }
+
+                                Button(
+                                    onClick = {
+                                        viewModel.approveMosque(mosque.id) { success ->
+                                            if (success) {
+                                                Toast.makeText(context, "Approved! ${mosque.name} is now publicly listed", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Approval failed", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1.5f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Approve Mosque", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

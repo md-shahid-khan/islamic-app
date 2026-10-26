@@ -37,6 +37,9 @@ public class UserController {
     private MosqueRepository mosqueRepository;
 
     @Autowired
+    private MosqueService mosqueService;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -108,14 +111,32 @@ public class UserController {
         return ResponseEntity.ok(dtos);
     }
 
-    @GetMapping("/admin/imams/pending")
+    @GetMapping({"/admin/imams/pending", "/admin/pending-imams"})
     public ResponseEntity<List<ImamProfileDto>> getPendingImams() {
         List<ImamProfile> pending = imamProfileRepository.findByVerifiedFalse();
         return ResponseEntity.ok(pending.stream().map(this::mapToImamProfileDto).collect(Collectors.toList()));
     }
 
+    @GetMapping({"/admin/mosques/pending", "/admin/pending-mosques"})
+    public ResponseEntity<List<MosqueDto>> getPendingMosques() {
+        return ResponseEntity.ok(mosqueService.getPendingMosques());
+    }
+
     @Transactional
-    @PutMapping("/admin/imams/{imamProfileId}/approve")
+    @PutMapping({"/admin/mosques/{mosqueId}/approve", "/admin/pending-mosques/{mosqueId}/approve"})
+    public ResponseEntity<MosqueDto> approveMosque(@PathVariable UUID mosqueId) {
+        return ResponseEntity.ok(mosqueService.approveMosque(mosqueId));
+    }
+
+    @Transactional
+    @PutMapping({"/admin/mosques/{mosqueId}/reject", "/admin/pending-mosques/{mosqueId}/reject"})
+    public ResponseEntity<Void> rejectMosque(@PathVariable UUID mosqueId) {
+        mosqueService.rejectMosque(mosqueId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Transactional
+    @PutMapping({"/admin/imams/{imamProfileId}/approve", "/admin/pending-imams/{imamProfileId}/approve"})
     public ResponseEntity<ImamProfileDto> approveImam(@PathVariable UUID imamProfileId) {
         ImamProfile profile = imamProfileRepository.findById(imamProfileId)
                 .orElseThrow(() -> new ResourceNotFoundException("Imam profile not found with ID: " + imamProfileId));
@@ -140,7 +161,7 @@ public class UserController {
     }
 
     @Transactional
-    @PutMapping("/admin/imams/{imamProfileId}/reject")
+    @PutMapping({"/admin/imams/{imamProfileId}/reject", "/admin/pending-imams/{imamProfileId}/reject"})
     public ResponseEntity<Void> rejectImam(@PathVariable UUID imamProfileId) {
         ImamProfile profile = imamProfileRepository.findById(imamProfileId)
                 .orElseThrow(() -> new ResourceNotFoundException("Imam profile not found with ID: " + imamProfileId));

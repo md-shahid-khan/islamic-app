@@ -24,6 +24,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _pendingImams = MutableStateFlow<List<ImamProfileDto>>(emptyList())
     val pendingImams: StateFlow<List<ImamProfileDto>> = _pendingImams
 
+    private val _pendingMosques = MutableStateFlow<List<MosqueDto>>(emptyList())
+    val pendingMosques: StateFlow<List<MosqueDto>> = _pendingMosques
+
     private val _selectedImam = MutableStateFlow<ImamProfileDto?>(null)
     val selectedImam: StateFlow<ImamProfileDto?> = _selectedImam
 
@@ -409,6 +412,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+        loadPendingMosques()
+    }
+
+    fun loadPendingMosques() {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.getPendingMosques()
+                if (res.isSuccessful && res.body() != null) {
+                    _pendingMosques.value = res.body()!!
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun approveMosque(mosqueId: String, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.approveMosque(mosqueId)
+                if (res.isSuccessful) {
+                    loadPendingMosques()
+                    fetchMosques()
+                    onComplete(true)
+                } else {
+                    onComplete(false)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false)
+            }
+        }
+    }
+
+    fun rejectMosque(mosqueId: String, onComplete: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                val res = ApiClient.api.rejectMosque(mosqueId)
+                if (res.isSuccessful) {
+                    loadPendingMosques()
+                    fetchMosques()
+                    onComplete(true)
+                } else {
+                    onComplete(false)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false)
             }
         }
     }

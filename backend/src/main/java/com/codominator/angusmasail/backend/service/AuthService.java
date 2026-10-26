@@ -256,7 +256,7 @@ public class AuthService {
                                 .city(city)
                                 .fiqhSchool(fiqh)
                                 .registeredBy(creator1)
-                                .verified(true)
+                                .verified(false)
                                 .build()));
 
                 ImamProfile profile = ImamProfile.builder()
@@ -265,11 +265,11 @@ public class AuthService {
                         .masjidName(mosque.getName())
                         .masjidCity(mosque.getCity())
                         .fiqhSchool(fiqh)
-                        .verified(true)
+                        .verified(false)
                         .build();
                 profile = imamProfileRepository.save(profile);
-                mosque.setCurrentImam(profile);
-                mosqueRepository.save(mosque);
+                user.setRole(Role.ROLE_USER);
+                user = userRepository.save(user);
             }
         } else {
             user = userOpt.get();
@@ -347,7 +347,7 @@ public class AuthService {
                             .address(request.getMasjidAddress() != null ? request.getMasjidAddress().trim() : "")
                             .fiqhSchool(finalFiqh)
                             .registeredBy(creator2)
-                            .verified(true)
+                            .verified(false)
                             .build()));
         }
 
@@ -361,6 +361,7 @@ public class AuthService {
             profile.setMasjidCity(mosque.getCity());
             profile.setFiqhSchool(fiqh);
             profile.setBio(finalBio);
+            profile.setVerified(false);
             profile = imamProfileRepository.save(profile);
         } else {
             profile = ImamProfile.builder()
@@ -374,9 +375,6 @@ public class AuthService {
                     .build();
             profile = imamProfileRepository.save(profile);
         }
-
-        mosque.setCurrentImam(profile);
-        mosqueRepository.save(mosque);
 
         user.setSelectedImam(profile);
         user = userRepository.save(user);

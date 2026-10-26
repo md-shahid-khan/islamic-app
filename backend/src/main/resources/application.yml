@@ -26,6 +26,21 @@ spring:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
       port: ${SPRING_DATA_REDIS_PORT:6379}
 
+  mail:
+    host: ${SPRING_MAIL_HOST:localhost}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:false}
+          connectiontimeout: 3000
+          timeout: 3000
+          writetimeout: 3000
+
 app:
   jwt:
     secret: ${APP_JWT_SECRET:4b29bb88b3f81e3a6c813589b276707328ff9029a1b8ed83427f8a7e0892c575a89f9202a}
@@ -33,3 +48,6 @@ app:
     refreshExpirationMs: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000} # 7 days
   upload:
     dir: ${APP_UPLOAD_DIR:./uploads}
+  admin:
+    # Multiple admins format: email:password:name:phone, separated by comma
+    users: ${APP_ADMIN_USERS:admin@angusmasail.com:Admin@123:Super Admin:9999999999}

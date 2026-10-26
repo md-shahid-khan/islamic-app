@@ -48,15 +48,21 @@ public class MosqueService {
     public List<MosqueDto> getAllMosques(String search, String city) {
         List<Mosque> list;
         if (search != null && !search.isBlank()) {
-            list = mosqueRepository.findByCityContainingIgnoreCaseOrNameContainingIgnoreCase(search.trim(), search.trim());
+            list = mosqueRepository.searchVerifiedMosques(search.trim());
         } else {
-            list = mosqueRepository.findAllByOrderByCreatedAtDesc();
+            list = mosqueRepository.findByVerifiedTrueOrderByCreatedAtDesc();
         }
         return list.stream().map(this::mapToDto).collect(Collectors.toList());
     }
 
     public List<MosqueDto> getAvailableMosques() {
         return mosqueRepository.findAvailableMosques().stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
+    public List<MosqueDto> getPendingMosques() {
+        return mosqueRepository.findByVerifiedFalseOrderByCreatedAtDesc().stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
@@ -82,11 +88,37 @@ public class MosqueService {
                 .fiqhSchool(request.getFiqhSchool() != null && !request.getFiqhSchool().isBlank() ? request.getFiqhSchool().trim() : "Hanafi")
                 .imageUrl(request.getImageUrl())
                 .hijriOffsetDays(request.getHijriOffsetDays() != null ? request.getHijriOffsetDays() : 0)
-                .verified(true)
+                .verified(false) // Requires administrator approval before public visibility
                 .registeredBy(user)
                 .build();
 
         mosque = mosqueRepository.save(mosque);
         return mapToDto(mosque);
+    }
+
+    @Transactional
+    public MosqueDto approveMosque(UUID mosqueId) {
+        Mosque mosque = mosqueRepository.findById(mosqueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Mosque not found with ID: " + mosqueId));
+        mosque.setVerified(true);
+        mosque = mosqueRepository.save(mosque);
+        return mapToDto(mosque);
+    }
+
+    @Autowired(required = false)
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    @Transactional
+    public void rejectMosque(UUID mosqueId) {
+        Mosque mosque = mosqueRepository.findById(mosqueId)
+                .orElseThrow(() -> new ResourceNotFoundException("Mosque not found with ID: " + mosqueId));
+        if (jdbcTemplate != null) {
+            try {
+                jdbcTemplate.update("UPDATE prayer_timetables SET mosque_id = NULL WHERE mosque_id = ?", mosqueId);
+                jdbcTemplate.update("UPDATE imam_profiles SET mosque_id = NULL WHERE mosque_id = ?", mosqueId);
+                jdbcTemplate.update("UPDATE users SET selected_mosque_id = NULL WHERE selected_mosque_id = ?", mosqueId);
+            } catch (Exception ignored) {}
+        }
+        mosqueRepository.delete(mosque);
     }
 }
