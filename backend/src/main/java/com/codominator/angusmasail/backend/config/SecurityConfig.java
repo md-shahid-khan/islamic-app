@@ -57,16 +57,21 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth ->
-                auth.requestMatchers("/api/v1/auth/**").permitAll()
+                auth.requestMatchers("/", "/health", "/api/v1/health", "/api/v1/auth/**").permitAll()
                     .requestMatchers("/uploads/**").permitAll()
                     .requestMatchers("/ws/**", "/ws/chat/**", "/ws-chat/**").permitAll()
                     .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/v1/imams/**", "/api/v1/mosques/**", "/api/v1/prayer/daily/**", "/api/v1/resources/**", "/api/v1/status/active/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, 
+                            "/api/v1/imams", "/api/v1/imams/**",
+                            "/api/v1/mosques", "/api/v1/mosques/**",
+                            "/api/v1/prayer/daily/**", 
+                            "/api/v1/resources", "/api/v1/resources/**", 
+                            "/api/v1/status/active/**").permitAll()
                     .requestMatchers(HttpMethod.PUT, "/api/v1/imam/prayer/update", "/api/v1/prayer/**").permitAll()
                     .requestMatchers("/api/v1/admin/**").permitAll()
                     .requestMatchers("/api/v1/chat/upload", "/api/v1/chat/**").permitAll()
-                    .requestMatchers("/api/v1/quran/**").permitAll()
-                    .requestMatchers("/api/v1/banners/**").permitAll()
+                    .requestMatchers("/api/v1/quran", "/api/v1/quran/**").permitAll()
+                    .requestMatchers("/api/v1/banners", "/api/v1/banners/**").permitAll()
                     .requestMatchers("/api/v1/library/**", "/api/v1/resources/**").permitAll()
                     .requestMatchers("/api/v1/imam/**").hasAnyAuthority("ROLE_IMAM", "ROLE_ADMIN")
                     .anyRequest().authenticated()

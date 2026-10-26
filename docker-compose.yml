@@ -13,7 +13,8 @@ services:
       - ./docker/certbot/www:/var/www/certbot:ro
       - backend_uploads:/var/www/uploads:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   backend:
@@ -23,7 +24,7 @@ services:
     image: ${DOCKER_IMAGE:-angusmasail-backend:latest}
     container_name: angus_backend
     environment:
-      JAVA_OPTS: "-Xmx512m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
+      JAVA_OPTS: "-Xmx384m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom --enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/angusmasail
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-password}
@@ -33,6 +34,12 @@ services:
       APP_JWT_SECRET: ${APP_JWT_SECRET:-4b29bb88b3f81e3a6c813589b276707328ff9029a1b8ed83427f8a7e0892c575a89f9202a}
     volumes:
       - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/api/v1/mosques || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
@@ -43,6 +50,8 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: angus_db
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
@@ -59,6 +68,8 @@ services:
   redis:
     image: redis:7.4-alpine
     container_name: angus_redis
+    ports:
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
