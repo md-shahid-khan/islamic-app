@@ -43,11 +43,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentInAppNotification.value = notification
     }
 
-    private var knownImamRequestIds = setOf<String>()
-    private var knownImamQueryIds = setOf<String>()
+    var currentScreen: String = "HOME"
+
+    private val notifiedMessageIds = mutableSetOf<String>()
+    private val notifiedRequestIds = mutableSetOf<String>()
+    private val notifiedQueryIds = mutableSetOf<String>()
+    private val notifiedAcceptedRequestIds = mutableSetOf<String>()
+    private val notifiedResolvedQueryIds = mutableSetOf<String>()
+    private var initialRequestsSyncCompleted = false
+    private var initialQueriesSyncCompleted = false
+    private var initialMessagesSyncCompleted = false
     private var knownUserRequestStatuses = mapOf<String, String>()
     private var knownUserQueryStatuses = mapOf<String, String>()
-    private var knownMessageIds = setOf<String>()
     private var realtimeSyncJob: kotlinx.coroutines.Job? = null
 
     private val _pendingImams = MutableStateFlow<List<ImamProfileDto>>(emptyList())
@@ -941,6 +948,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _imamChatRequests.value = emptyList()
         _activeChatMessages.value = emptyList()
         _selectedChatRequestId.value = null
+        notifiedMessageIds.clear()
+        notifiedRequestIds.clear()
+        notifiedQueryIds.clear()
+        notifiedAcceptedRequestIds.clear()
+        notifiedResolvedQueryIds.clear()
+        initialRequestsSyncCompleted = false
+        initialQueriesSyncCompleted = false
+        initialMessagesSyncCompleted = false
+        _currentInAppNotification.value = null
     }
 
     fun selectChatRequest(requestId: String?) {
@@ -968,7 +984,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val res = ApiClient.api.getChatMessages(requestId)
                 if (res.isSuccessful && res.body() != null) {
-                    _activeChatMessages.value = res.body()!!
+                    val msgs = res.body()!!
+                    _activeChatMessages.value = msgs
+                    // Seed existing messages into notifiedMessageIds so historical messages don't trigger banner
+                    msgs.mapNotNull { it.id }.forEach { notifiedMessageIds.add(it) }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -986,6 +1005,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val res = ApiClient.api.postChatMessage(requestId, messageText, mediaUrl)
                 if (res.isSuccessful && res.body() != null) {
+                    res.body()?.id?.let { notifiedMessageIds.add(it) }
                     fetchChatMessages(requestId)
                     onResult(true)
                 } else {
@@ -1414,6 +1434,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private suspend fun syncActiveChatMessages(userId: String, activeId: String) {
+        try {
+            val msgRes = ApiClient.api.getChatMessages(activeId)
+            if (msgRes.isSuccessful && msgRes.body() != null) {
+                val msgs = msgRes.body()!!
+                _activeChatMessages.value = msgs
+
+                if (!initialMessagesSyncCompleted) {
+                    msgs.mapNotNull { it.id }.forEach { notifiedMessageIds.add(it) }
+                    initialMessagesSyncCompleted = true
+                } else {
+                    val incoming = msgs.filter { msg ->
+                        val msgId = msg.id
+                        val isOtherSender = msg.senderId != null && msg.senderId != userId
+                        isOtherSender && msgId != null && !notifiedMessageIds.contains(msgId)
+                    }
+
+                    if (incoming.isNotEmpty()) {
+                        incoming.forEach { msg ->
+                            msg.id?.let { notifiedMessageIds.add(it) }
+                        }
+
+                        // Only show in-app banner & chime if user is NOT actively looking at the CHAT screen
+                        val isViewingChatScreen = currentScreen.equals("CHAT", ignoreCase = true)
+                        if (!isViewingChatScreen) {
+                            val latestMsg = incoming.last()
+                            _currentInAppNotification.value = InAppNotification(
+                                id = "chat_msg_${latestMsg.id}",
+                                title = "New message from ${latestMsg.senderName ?: "Scholar"}",
+                                message = latestMsg.messageText.take(65),
+                                targetScreen = "CHAT",
+                                requestId = activeId
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // ignore network glitch
+        }
+    }
+
     fun startRealtimeSync() {
         realtimeSyncJob?.cancel()
         realtimeSyncJob = viewModelScope.launch {
@@ -1430,10 +1492,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 val latest = reqRes.body()!!
                                 _imamChatRequests.value = latest
 
-                                val newPending = latest.filter { it.status.equals("PENDING", ignoreCase = true) && !knownImamRequestIds.contains(it.id) }
-                                if (newPending.isNotEmpty() && knownImamRequestIds.isNotEmpty()) {
+                                val newPending = latest.filter { it.status.equals("PENDING", ignoreCase = true) && !notifiedRequestIds.contains(it.id) }
+                                if (!initialRequestsSyncCompleted) {
+                                    latest.forEach { notifiedRequestIds.add(it.id) }
+                                    initialRequestsSyncCompleted = true
+                                } else if (newPending.isNotEmpty()) {
+                                    newPending.forEach { notifiedRequestIds.add(it.id) }
                                     val first = newPending.first()
                                     _currentInAppNotification.value = InAppNotification(
+                                        id = "req_${first.id}",
                                         title = "New Consultation Request",
                                         message = "${first.userName}: ${first.initialReason.take(65)}",
                                         targetScreen = "CHAT",
@@ -1441,7 +1508,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         isImamAction = true
                                     )
                                 }
-                                knownImamRequestIds = latest.map { it.id }.toSet()
                             }
 
                             val qRes = ApiClient.api.getImamQueries()
@@ -1449,10 +1515,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 val latestQ = qRes.body()!!
                                 _imamQueries.value = latestQ
 
-                                val newQ = latestQ.filter { it.status.equals("PENDING", ignoreCase = true) && !knownImamQueryIds.contains(it.id) }
-                                if (newQ.isNotEmpty() && knownImamQueryIds.isNotEmpty()) {
+                                val newQ = latestQ.filter { it.status.equals("PENDING", ignoreCase = true) && !notifiedQueryIds.contains(it.id) }
+                                if (!initialQueriesSyncCompleted) {
+                                    latestQ.forEach { notifiedQueryIds.add(it.id) }
+                                    initialQueriesSyncCompleted = true
+                                } else if (newQ.isNotEmpty()) {
+                                    newQ.forEach { notifiedQueryIds.add(it.id) }
                                     val first = newQ.first()
                                     _currentInAppNotification.value = InAppNotification(
+                                        id = "query_${first.id}",
                                         title = "New Masail Question",
                                         message = "${first.userNameSnapshot ?: "Congregant"}: ${first.questionText.take(65)}",
                                         targetScreen = "IMAM_DASHBOARD",
@@ -1460,15 +1531,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         isImamAction = true
                                     )
                                 }
-                                knownImamQueryIds = latestQ.map { it.id }.toSet()
                             }
 
                             val activeId = _selectedChatRequestId.value
                             if (!activeId.isNullOrBlank()) {
-                                val msgRes = ApiClient.api.getChatMessages(activeId)
-                                if (msgRes.isSuccessful && msgRes.body() != null) {
-                                    _activeChatMessages.value = msgRes.body()!!
-                                }
+                                syncActiveChatMessages(user.id, activeId)
                             }
                         } else {
                             // --- 2. USER REALTIME SYNC ---
@@ -1477,18 +1544,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 val latest = reqRes.body()!!
                                 _userChatRequests.value = latest
 
-                                for (req in latest) {
-                                    val prevStatus = knownUserRequestStatuses[req.id]
-                                    if (prevStatus != null && prevStatus.equals("PENDING", ignoreCase = true) && req.status.equals("ACCEPTED", ignoreCase = true)) {
-                                        _currentInAppNotification.value = InAppNotification(
-                                            title = "Consultation Accepted! \uD83C\uDF1F",
-                                            message = "Imam ${req.imamName} has accepted your consultation! Tap to chat now.",
-                                            targetScreen = "CHAT",
-                                            requestId = req.id
-                                        )
+                                if (!initialRequestsSyncCompleted) {
+                                    latest.forEach {
+                                        if (it.status.equals("ACCEPTED", ignoreCase = true)) {
+                                            notifiedAcceptedRequestIds.add(it.id)
+                                        }
                                     }
+                                    knownUserRequestStatuses = latest.associate { it.id to it.status }
+                                    initialRequestsSyncCompleted = true
+                                } else {
+                                    for (req in latest) {
+                                        val prevStatus = knownUserRequestStatuses[req.id]
+                                        if (prevStatus != null && prevStatus.equals("PENDING", ignoreCase = true) && req.status.equals("ACCEPTED", ignoreCase = true)) {
+                                            if (!notifiedAcceptedRequestIds.contains(req.id)) {
+                                                notifiedAcceptedRequestIds.add(req.id)
+                                                _currentInAppNotification.value = InAppNotification(
+                                                    id = "accept_${req.id}",
+                                                    title = "Consultation Accepted! 🌟",
+                                                    message = "Imam ${req.imamName} has accepted your consultation! Tap to chat now.",
+                                                    targetScreen = "CHAT",
+                                                    requestId = req.id
+                                                )
+                                            }
+                                        }
+                                    }
+                                    knownUserRequestStatuses = latest.associate { it.id to it.status }
                                 }
-                                knownUserRequestStatuses = latest.associate { it.id to it.status }
                             }
 
                             val qRes = ApiClient.api.getMyQueries()
@@ -1496,38 +1577,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 val latestQ = qRes.body()!!
                                 _myQueries.value = latestQ
 
-                                for (q in latestQ) {
-                                    val prevStatus = knownUserQueryStatuses[q.id]
-                                    if (prevStatus != null && !prevStatus.equals("RESOLVED", ignoreCase = true) && q.status.equals("RESOLVED", ignoreCase = true)) {
-                                        _currentInAppNotification.value = InAppNotification(
-                                            title = "Masail Answered! \u2705",
-                                            message = "Imam has replied to your Masail inquiry.",
-                                            targetScreen = "MASAIL",
-                                            queryId = q.id
-                                        )
+                                if (!initialQueriesSyncCompleted) {
+                                    latestQ.forEach {
+                                        if (it.status.equals("RESOLVED", ignoreCase = true)) {
+                                            notifiedResolvedQueryIds.add(it.id)
+                                        }
                                     }
+                                    knownUserQueryStatuses = latestQ.associate { it.id to it.status }
+                                    initialQueriesSyncCompleted = true
+                                } else {
+                                    for (q in latestQ) {
+                                        val prevStatus = knownUserQueryStatuses[q.id]
+                                        if (prevStatus != null && !prevStatus.equals("RESOLVED", ignoreCase = true) && q.status.equals("RESOLVED", ignoreCase = true)) {
+                                            if (!notifiedResolvedQueryIds.contains(q.id)) {
+                                                notifiedResolvedQueryIds.add(q.id)
+                                                _currentInAppNotification.value = InAppNotification(
+                                                    id = "resolved_${q.id}",
+                                                    title = "Masail Answered! ✅",
+                                                    message = "Imam has replied to your Masail inquiry.",
+                                                    targetScreen = "MASAIL",
+                                                    queryId = q.id
+                                                )
+                                            }
+                                        }
+                                    }
+                                    knownUserQueryStatuses = latestQ.associate { it.id to it.status }
                                 }
-                                knownUserQueryStatuses = latestQ.associate { it.id to it.status }
                             }
 
                             val activeId = _selectedChatRequestId.value
                             if (!activeId.isNullOrBlank()) {
-                                val msgRes = ApiClient.api.getChatMessages(activeId)
-                                if (msgRes.isSuccessful && msgRes.body() != null) {
-                                    val msgs = msgRes.body()!!
-                                    val newMsgs = msgs.filter { it.senderId != user.id && !knownMessageIds.contains(it.id) }
-                                    if (newMsgs.isNotEmpty() && knownMessageIds.isNotEmpty()) {
-                                        val latestMsg = newMsgs.last()
-                                        _currentInAppNotification.value = InAppNotification(
-                                            title = "New message from ${latestMsg.senderName}",
-                                            message = latestMsg.messageText.take(65),
-                                            targetScreen = "CHAT",
-                                            requestId = activeId
-                                        )
-                                    }
-                                    knownMessageIds = msgs.mapNotNull { it.id }.toSet()
-                                    _activeChatMessages.value = msgs
-                                }
+                                syncActiveChatMessages(user.id, activeId)
                             }
                         }
                     }
@@ -1538,5 +1618,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
 }

@@ -112,6 +112,13 @@ fun MainAppContainer(viewModel: MainViewModel) {
         imamChatRequests.count { it.status.equals("PENDING", ignoreCase = true) }
     }
 
+    LaunchedEffect(currentDestination) {
+        viewModel.currentScreen = currentDestination.name
+        if (currentDestination == NavDestination.CHAT && currentInAppNotification?.targetScreen == "CHAT") {
+            viewModel.dismissInAppNotification()
+        }
+    }
+
     LaunchedEffect(currentInAppNotification?.id) {
         val notif = currentInAppNotification
         if (notif != null) {
