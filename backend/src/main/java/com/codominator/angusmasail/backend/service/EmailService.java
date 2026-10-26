@@ -4,6 +4,7 @@ import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -21,6 +22,9 @@ public class EmailService {
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
     private static final String EMAIL_OTP_PREFIX = "email_otp:";
     private static final Duration OTP_EXPIRY = Duration.ofMinutes(10);
+
+    @Value("${spring.mail.username:shahidangus@gmail.com}")
+    private String senderEmail;
 
     @Autowired(required = false)
     private JavaMailSender mailSender;
@@ -82,6 +86,8 @@ public class EmailService {
             try {
                 MimeMessage message = mailSender.createMimeMessage();
                 MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+                String from = (senderEmail != null && !senderEmail.isBlank()) ? senderEmail.trim() : "shahidangus@gmail.com";
+                helper.setFrom(from, "Angus Masail");
                 helper.setTo(toEmail);
                 helper.setSubject("Angus Masail - Your Account Verification Code");
 

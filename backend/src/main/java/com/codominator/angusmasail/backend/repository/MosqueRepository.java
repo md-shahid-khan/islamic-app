@@ -22,6 +22,9 @@ public interface MosqueRepository extends JpaRepository<Mosque, UUID> {
 
     Optional<Mosque> findByNameIgnoreCaseAndCityIgnoreCase(String name, String city);
 
-    @Query("SELECT m FROM Mosque m LEFT JOIN m.currentImam i WHERE m.verified = true AND (i IS NULL OR i.verified = false) ORDER BY m.name ASC")
+    @Query("SELECT DISTINCT m FROM Mosque m WHERE m.verified = true OR (m.registeredBy IS NOT NULL AND m.registeredBy.id = :userId) ORDER BY m.name ASC")
+    List<Mosque> findAvailableMosquesForUser(@Param("userId") UUID userId);
+
+    @Query("SELECT m FROM Mosque m WHERE m.verified = true ORDER BY m.name ASC")
     List<Mosque> findAvailableMosques();
 }

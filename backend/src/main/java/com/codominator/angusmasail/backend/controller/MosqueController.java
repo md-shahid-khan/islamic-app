@@ -54,8 +54,10 @@ public class MosqueController {
      * No authentication required.
      */
     @GetMapping("/mosques/available")
-    public ResponseEntity<List<MosqueDto>> getAvailableMosques() {
-        return ResponseEntity.ok(mosqueService.getAvailableMosques());
+    public ResponseEntity<List<MosqueDto>> getAvailableMosques(
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        UUID userId = userDetails != null ? userDetails.getId() : null;
+        return ResponseEntity.ok(mosqueService.getAvailableMosques(userId));
     }
 
     /**

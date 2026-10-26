@@ -56,7 +56,17 @@ public class MosqueService {
     }
 
     public List<MosqueDto> getAvailableMosques() {
-        return mosqueRepository.findAvailableMosques().stream()
+        return getAvailableMosques(null);
+    }
+
+    public List<MosqueDto> getAvailableMosques(UUID userId) {
+        List<Mosque> list;
+        if (userId != null) {
+            list = mosqueRepository.findAvailableMosquesForUser(userId);
+        } else {
+            list = mosqueRepository.findAvailableMosques();
+        }
+        return list.stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }
