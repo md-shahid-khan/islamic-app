@@ -21,6 +21,20 @@ android {
         buildConfigField("String", "DEV_URL", "\"http://10.0.2.2:8080/\"")
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = project.rootProject.file("angus-release.jks")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "angusmasail"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "angus"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "angusmasail"
+            } else {
+                initWith(getByName("debug"))
+            }
+        }
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", "BASE_URL", "\"https://angus.iamshahid.pro/\"")
@@ -29,6 +43,7 @@ android {
             versionNameSuffix = "-dev"
         }
         release {
+            signingConfig = signingConfigs.getByName("release")
             buildConfigField("String", "BASE_URL", "\"https://angus.iamshahid.pro/\"")
             buildConfigField("Boolean", "IS_PROD", "true")
             buildConfigField("String", "ENVIRONMENT", "\"PROD\"")
