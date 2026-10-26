@@ -18,14 +18,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "PROD_URL", "\"https://angus.iamshahid.pro/\"")
-        buildConfigField("String", "DEV_URL", "\"http://127.0.0.1:8080/\"")
+        buildConfigField("String", "DEV_URL", "\"http://10.0.2.2:8080/\"")
     }
 
     buildTypes {
         debug {
-            buildConfigField("String", "BASE_URL", "\"http://127.0.0.1:8080/\"")
-            buildConfigField("Boolean", "IS_PROD", "false")
-            buildConfigField("String", "ENVIRONMENT", "\"DEV\"")
+            buildConfigField("String", "BASE_URL", "\"https://angus.iamshahid.pro/\"")
+            buildConfigField("Boolean", "IS_PROD", "true")
+            buildConfigField("String", "ENVIRONMENT", "\"PROD\"")
             versionNameSuffix = "-dev"
         }
         release {

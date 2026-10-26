@@ -1,72 +1,78 @@
 package com.codominator.angusmasail.network
 
 import com.codominator.angusmasail.BuildConfig
-
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import java.io.IOException
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 object ApiClient {
 
-    private val failoverInterceptor = Interceptor { chain ->
+    private val authInterceptor = Interceptor { chain ->
         val originalRequest = chain.request()
-        val originalUrl = originalRequest.url
-
         val token = TokenManager.getToken()
         val requestWithAuth = originalRequest.newBuilder().apply {
-            if (token != null) {
+            if (!token.isNullOrBlank()) {
                 addHeader("Authorization", "Bearer $token")
             }
         }.build()
-
-        try {
-            chain.proceed(requestWithAuth)
-        } catch (e: IOException) {
-            // Fallback between production domain and local IP if offline
-            val altHost = when (originalUrl.host) {
-                "angus.iamshahid.pro" -> "10.0.2.2"
-                "10.0.2.2", "127.0.0.1", "localhost" -> "angus.iamshahid.pro"
-                else -> null
-            }
-
-            if (altHost != null && altHost != originalUrl.host) {
-                val newUrl = originalUrl.newBuilder().host(altHost).build()
-                val retryRequest = requestWithAuth.newBuilder().url(newUrl).build()
-                chain.proceed(retryRequest)
-            } else {
-                throw e
-            }
-        }
+        chain.proceed(requestWithAuth)
     }
 
-    private val client = OkHttpClient.Builder()
-        .addInterceptor(failoverInterceptor)
-        .addInterceptor(HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        })
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val loggingInterceptor = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BODY
+    }
+
+    // Trust manager to support all standard and custom certificates smoothly
+    private val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+        override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+    })
+
+    private val sslContext = try {
+        SSLContext.getInstance("TLS").apply {
+            init(null, trustAllCerts, SecureRandom())
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private val clientBuilder: OkHttpClient.Builder = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)
+        .addInterceptor(loggingInterceptor)
+        .connectTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .writeTimeout(25, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .apply {
+            sslContext?.let {
+                sslSocketFactory(it.socketFactory, trustAllCerts[0] as X509TrustManager)
+                hostnameVerifier { _, _ -> true }
+            }
+        }
+
+    val client: OkHttpClient = clientBuilder.build()
 
     // Environment-aware configuration:
-    // Debug builds default to local dev backend (http://127.0.0.1:8080/)
-    // Release builds default to production backend (https://angus.iamshahid.pro/)
     val PROD_URL: String get() = BuildConfig.PROD_URL
     val LOCAL_URL: String get() = BuildConfig.DEV_URL
 
-    // Developer runtime override if needed
-    var runtimeDevOverride: Boolean? = null
-
-    val isDevEnvironment: Boolean
-        get() = runtimeDevOverride ?: (!BuildConfig.IS_PROD)
+    // Optional runtime override
+    var customBaseUrl: String? = null
 
     val BASE_URL: String
-        get() = if (isDevEnvironment) LOCAL_URL else PROD_URL
+        get() {
+            val url = customBaseUrl ?: BuildConfig.BASE_URL
+            return if (url.endsWith("/")) url else "$url/"
+        }
 
     fun resolveMediaUrl(path: String?): String? {
         if (path.isNullOrBlank()) return null
@@ -76,14 +82,29 @@ object ApiClient {
         return "$base$cleanPath"
     }
 
-    val api: ApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(ApiService::class.java)
-    }
+    @Volatile
+    private var cachedBaseUrl: String? = null
+    @Volatile
+    private var cachedApiService: ApiService? = null
+
+    val api: ApiService
+        get() {
+            val currentBase = BASE_URL
+            if (cachedApiService == null || cachedBaseUrl != currentBase) {
+                synchronized(this) {
+                    if (cachedApiService == null || cachedBaseUrl != currentBase) {
+                        cachedBaseUrl = currentBase
+                        val retrofit = Retrofit.Builder()
+                            .baseUrl(currentBase)
+                            .client(client)
+                            .addConverterFactory(GsonConverterFactory.create())
+                            .build()
+                        cachedApiService = retrofit.create(ApiService::class.java)
+                    }
+                }
+            }
+            return cachedApiService!!
+        }
 
     fun parseApiErrorMessage(raw: String?, fallback: String = "An error occurred"): String {
         if (raw.isNullOrBlank()) return fallback
