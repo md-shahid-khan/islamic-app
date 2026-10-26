@@ -112,29 +112,70 @@ jobs:
             echo "⚠️ EC2_HOST or EC2_SSH_KEY not set. Skipping automatic EC2 deployment."
           fi
 
-      - name: Sync deployment files to EC2
+      - name: Deploy to EC2 via SSH
         if: steps.check-secrets.outputs.configured == 'true'
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || 22 }}
-          source: "docker-compose.yml,deploy-ec2.sh,.env.example,docker/**"
-          target: "~/angusmasail"
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_PORT: ${{ secrets.EC2_PORT || '22' }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
-      - name: Execute rollout on EC2 via SSH
-        if: steps.check-secrets.outputs.configured == 'true'
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || 22 }}
-          script: |
-            cd ~/angusmasail
-            chmod +x deploy-ec2.sh
-            ./deploy-ec2.sh
+          # Save private key safely with trailing newline
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # SSH client configuration
+          cat << 'EOF' > ~/.ssh/config
+          Host ec2-target
+            HostName ${{ secrets.EC2_HOST }}
+            Port ${{ secrets.EC2_PORT || '22' }}
+            StrictHostKeyChecking accept-new
+            UserKnownHostsFile ~/.ssh/known_hosts
+            ServerAliveInterval 30
+            ServerAliveCountMax 3
+            IdentityFile ~/.ssh/id_rsa
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+          # Determine EC2 user: use secret if provided, or test standard defaults (ubuntu / ec2-user)
+          TARGET_USER="${EC2_USER}"
+          if [ -z "$TARGET_USER" ]; then
+            echo "🔍 EC2_USER secret not set, auto-detecting AMI default username..."
+            if ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=10 "ubuntu@ec2-target" "echo ok" >/dev/null 2>&1; then
+              TARGET_USER="ubuntu"
+            elif ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=10 "ec2-user@ec2-target" "echo ok" >/dev/null 2>&1; then
+              TARGET_USER="ec2-user"
+            else
+              TARGET_USER="ubuntu"
+            fi
+          fi
+          echo "👤 Target EC2 User: $TARGET_USER"
+
+          # Verify SSH connection
+          if ! ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=15 "$TARGET_USER@ec2-target" "echo 'SSH connection verified'" ; then
+            echo ""
+            echo "❌ ERROR: SSH Authentication Failed to $TARGET_USER@${EC2_HOST}"
+            echo "👉 Checklist to fix this:"
+            echo "   1. Check if EC2_USER is correct ('ubuntu' for Ubuntu AMIs, 'ec2-user' for Amazon Linux)."
+            echo "   2. Ensure EC2_SSH_KEY contains the full private key (.pem) associated with this instance."
+            echo "   3. Ensure Port 22 is open in AWS Security Group Inbound Rules."
+            exit 1
+          fi
+
+          # Prepare app directory on EC2
+          ssh -F ~/.ssh/config "$TARGET_USER@ec2-target" "mkdir -p ~/angusmasail/docker"
+
+          # Sync docker-compose, deploy script, and configs
+          echo "📦 Syncing deployment configuration files..."
+          scp -F ~/.ssh/config -r docker-compose.yml deploy-ec2.sh .env.example docker/ "$TARGET_USER@ec2-target:~/angusmasail/"
+
+          # Run automated rollout script
+          echo "🚀 Executing deployment script on EC2..."
+          ssh -F ~/.ssh/config "$TARGET_USER@ec2-target" "cd ~/angusmasail && chmod +x deploy-ec2.sh && ./deploy-ec2.sh"
 
   # ============================================================================
   # 4. BUILD ANDROID DEBUG & RELEASE APKS
