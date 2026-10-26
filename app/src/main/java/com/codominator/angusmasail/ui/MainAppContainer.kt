@@ -210,7 +210,7 @@ fun MainAppContainer(viewModel: MainViewModel) {
                         DrawerMenuItem(
                             icon = Icons.AutoMirrored.Rounded.Login,
                             label = "Login",
-                            subtitle = "Access account or switch persona"
+                            subtitle = "Sign in to your account"
                         ) {
                             coroutineScope.launch { drawerState.close() }
                             showLoginDialog = true
@@ -485,49 +485,7 @@ fun MainAppContainer(viewModel: MainViewModel) {
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-                    HorizontalDivider(color = Color(0xFFE2D9C8))
-                    Spacer(modifier = Modifier.height(12.dp))
 
-                    // Quick Switch Role Shortcut (for developer testing)
-                    Text(
-                        text = "QUICK TEST PERSONA",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterChip(
-                            selected = userRole == "ROLE_USER",
-                            onClick = {
-                                viewModel.switchRole("ROLE_USER")
-                                Toast.makeText(context, "Active Persona: Congregant (User)", Toast.LENGTH_SHORT).show()
-                            },
-                            label = { Text("User", fontSize = 11.sp) }
-                        )
-                        FilterChip(
-                            selected = userRole == "ROLE_IMAM",
-                            onClick = {
-                                viewModel.switchRole("ROLE_IMAM")
-                                Toast.makeText(context, "Active Persona: Imam Scholar", Toast.LENGTH_SHORT).show()
-                            },
-                            label = { Text("Imam", fontSize = 11.sp) }
-                        )
-                        FilterChip(
-                            selected = userRole == "ROLE_ADMIN",
-                            onClick = {
-                                viewModel.switchRole("ROLE_ADMIN")
-                                Toast.makeText(context, "Active Persona: Admin Trustee", Toast.LENGTH_SHORT).show()
-                            },
-                            label = { Text("Admin", fontSize = 11.sp) }
-                        )
-                    }
                 }
             }
         }
