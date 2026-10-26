@@ -4,15 +4,25 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import coil.Coil
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.codominator.angusmasail.ui.MainAppContainer
+import com.codominator.angusmasail.ui.splash.SplashScreen
 import com.codominator.angusmasail.ui.theme.AngusMasailTheme
 import com.codominator.angusmasail.viewmodel.MainViewModel
 
@@ -47,7 +57,21 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainAppContainer(viewModel = viewModel)
+                    var showSplash by remember { mutableStateOf(true) }
+
+                    AnimatedContent(
+                        targetState = showSplash,
+                        transitionSpec = {
+                            fadeIn(tween(600)) togetherWith fadeOut(tween(500))
+                        },
+                        label = "splashTransition"
+                    ) { isSplash ->
+                        if (isSplash) {
+                            SplashScreen(onSplashFinished = { showSplash = false })
+                        } else {
+                            MainAppContainer(viewModel = viewModel)
+                        }
+                    }
                 }
             }
         }
