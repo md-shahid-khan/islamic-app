@@ -183,7 +183,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val body = res.body()!!
                     onResult(true, null, body.devOtp)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Registration could not be completed"
+                    val err = ApiClient.extractUserFriendlyError(res, "Registration could not be completed")
                     onResult(false, err, null)
                 }
             } catch (e: Exception) {
@@ -210,7 +210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchImamsAndSetDefault()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Invalid OTP code"
+                    val err = ApiClient.extractUserFriendlyError(res, "Invalid or expired OTP code")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -242,7 +242,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchImamsAndSetDefault()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Invalid login credentials"
+                    val err = ApiClient.extractUserFriendlyError(res, "Invalid username, email, phone or password")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -263,7 +263,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _currentUser.value = res.body()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Failed to update profile"
+                    val err = ApiClient.extractUserFriendlyError(res, "Failed to update profile")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -285,7 +285,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchImamsAndSetDefault()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Invalid credentials"
+                    val err = ApiClient.extractUserFriendlyError(res, "Invalid login credentials")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -325,7 +325,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchImamsAndSetDefault()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Registration failed"
+                    val err = ApiClient.extractUserFriendlyError(res, "Registration failed")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -372,7 +372,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchImamChatRequests()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Imam Registration failed"
+                    val err = ApiClient.extractUserFriendlyError(res, "Imam registration failed")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -627,7 +627,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchBanners()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Failed to upload banner"
+                    val err = ApiClient.extractUserFriendlyError(res, "Failed to upload banner")
                     onResult(false, err)
                 }
             } catch (e: Exception) {
@@ -804,7 +804,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchImamQueries()
                     onResult(true, null)
                 } else {
-                    val errorMsg = res.errorBody()?.string() ?: "Server returned error ${res.code()}"
+                    val errorMsg = ApiClient.extractUserFriendlyError(res, "Server returned error ${res.code()}")
                     onResult(false, errorMsg)
                 }
             } catch (e: Exception) {
@@ -867,7 +867,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     fetchMyQueries()
                     onResult(true, null)
                 } else {
-                    val err = res.errorBody()?.string() ?: "Failed to accept query"
+                    val err = ApiClient.extractUserFriendlyError(res, "Failed to accept query")
                     onResult(false, err)
                 }
             } catch (e: Exception) {

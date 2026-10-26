@@ -135,8 +135,10 @@ public class DataSeeder implements CommandLineRunner {
                     u.setRole(Role.ROLE_ADMIN);
                     u.setPassword(encodedPassword);
                     u.setEmailVerified(true);
-                    if (u.getName() == null || u.getName().isBlank()) {
-                        u.setName(adminName);
+                    u.setEmail(email);
+                    u.setName(adminName);
+                    if (!adminPhone.isEmpty()) {
+                        u.setPhone(adminPhone);
                     }
                     userRepository.save(u);
                     System.out.println("Configured Admin user: " + email + " (" + u.getRole() + ")");

@@ -77,4 +77,32 @@ object ApiClient {
             .build()
             .create(ApiService::class.java)
     }
+
+    fun parseApiErrorMessage(raw: String?, fallback: String = "An error occurred"): String {
+        if (raw.isNullOrBlank()) return fallback
+        val trimmed = raw.trim()
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+            return trimmed
+        }
+        return try {
+            val json = org.json.JSONObject(trimmed)
+            when {
+                json.has("message") && json.optString("message").isNotBlank() -> json.optString("message")
+                json.has("error") && json.optString("error").isNotBlank() -> json.optString("error")
+                json.has("detail") && json.optString("detail").isNotBlank() -> json.optString("detail")
+                else -> fallback
+            }
+        } catch (_: Exception) {
+            trimmed
+        }
+    }
+
+    fun <T> extractUserFriendlyError(res: retrofit2.Response<T>, fallback: String = "Request could not be completed"): String {
+        val raw = try {
+            res.errorBody()?.string()?.trim()
+        } catch (_: Exception) {
+            null
+        }
+        return parseApiErrorMessage(raw, fallback)
+    }
 }

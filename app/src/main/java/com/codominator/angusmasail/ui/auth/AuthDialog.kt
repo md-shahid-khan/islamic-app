@@ -166,7 +166,7 @@ fun AuthDialog(
                             Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = Color(0xFFC0392B), modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = errorMessage!!,
+                                text = com.codominator.angusmasail.network.ApiClient.parseApiErrorMessage(errorMessage),
                                 color = Color(0xFFC0392B),
                                 fontSize = 12.sp,
                                 modifier = Modifier.weight(1f)
