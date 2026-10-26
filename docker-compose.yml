@@ -21,7 +21,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: ${DOCKER_IMAGE:-angusmasail-backend:latest}
+    image: ${DOCKER_IMAGE:-codominator/angusmasail-backend:latest}
     container_name: angus_backend
     environment:
       JAVA_OPTS: "-Xmx384m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom --enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"
