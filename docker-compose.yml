@@ -13,8 +13,7 @@ services:
       - ./docker/certbot/www:/var/www/certbot:ro
       - backend_uploads:/var/www/uploads:ro
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     restart: unless-stopped
 
   backend:
@@ -35,11 +34,11 @@ services:
     volumes:
       - backend_uploads:/app/uploads
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/api/v1/mosques || exit 1"]
-      interval: 10s
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/health || exit 1"]
+      interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 6
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
