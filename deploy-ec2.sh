@@ -70,6 +70,14 @@ if ! docker compose up -d --remove-orphans; then
     docker compose up -d --remove-orphans
 fi
 
+# Sync Postgres superuser password in case the volume was initialized with an older password
+CURRENT_DB_PASS=$(grep -E '^DB_PASSWORD=' .env 2>/dev/null | cut -d'=' -f2- | tr -d '\r"'"'" || true)
+if [ -n "$CURRENT_DB_PASS" ]; then
+    echo "🔑 Syncing PostgreSQL credentials with .env..."
+    docker compose exec -T db psql -U postgres -d postgres -c "ALTER USER postgres WITH PASSWORD '${CURRENT_DB_PASS}';" >/dev/null 2>&1 || true
+    docker compose restart backend >/dev/null 2>&1 || true
+fi
+
 echo "⏳ [4/5] Waiting for backend to become healthy..."
 MAX_ATTEMPTS=24
 COUNT=0
