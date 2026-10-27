@@ -34,10 +34,9 @@ spring:
 
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST}
-      port: ${SPRING_DATA_REDIS_PORT:6379}
-      password: ${SPRING_DATA_REDIS_PASSWORD}
-      timeout: 2000ms
+      url: ${SPRING_DATA_REDIS_HOST}
+      ssl:
+        enabled: true  # Recommended for remote cloud Redis instances
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
