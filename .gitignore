@@ -93,3 +93,5 @@ docker/certbot/
 # Environment files
 .env
 .env.local
+
+som.txt

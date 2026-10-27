@@ -5,11 +5,12 @@ import com.codominator.angusmasail.backend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -27,19 +28,7 @@ public class DataSeeder implements CommandLineRunner {
     private PrayerTimetableRepository prayerTimetableRepository;
 
     @Autowired
-    private MasailQueryRepository masailQueryRepository;
-
-    @Autowired
-    private ImamStatusRepository imamStatusRepository;
-
-    @Autowired
     private ImamResourceRepository imamResourceRepository;
-
-    @Autowired
-    private ChatRequestRepository chatRequestRepository;
-
-    @Autowired
-    private ChatMessageRepository chatMessageRepository;
 
     @Autowired
     private BannerRepository bannerRepository;
@@ -53,14 +42,18 @@ public class DataSeeder implements CommandLineRunner {
     @Autowired(required = false)
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private Environment environment;
+
     @Value("${app.admin.users:admin@angusmasail.com:admin123:Central Admin:9998887776}")
     private String adminUsersConfig;
 
     @Override
     @Transactional
     public void run(String... args) throws Exception {
-        System.out.println("Checking database seed status for Angus Masail...");
-
+        // =========================================================================
+        // 1. Mandatory Database Schema Constraint Fixes (Production & Dev)
+        // =========================================================================
         if (jdbcTemplate != null) {
             try {
                 jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_manhaj_check");
@@ -69,44 +62,26 @@ public class DataSeeder implements CommandLineRunner {
             } catch (Exception ignored) {}
         }
 
-        // 1. Seed Established Mosques (verified by default in directory)
-        Mosque mosque1 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Al-Noor", "Central District")
-                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
-                        .name("Masjid Al-Noor")
-                        .city("Central District")
-                        .address("Plot 12, Main Sunni Complex")
-                        .fiqhSchool("Hanafi")
-                        .verified(true)
-                        .build()));
+        // =========================================================================
+        // 2. Mandatory Admin User Provisioning (Required in all profiles)
+        // =========================================================================
+        seedAdminUsers();
 
-        Mosque mosque2 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Bilal (Downtown)", "East District")
-                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
-                        .name("Masjid Bilal (Downtown)")
-                        .city("East District")
-                        .address("Near Clock Tower")
-                        .fiqhSchool("Shafi'i")
-                        .verified(true)
-                        .build()));
+        // =========================================================================
+        // 3. In Production: Skip all mock/sample data seeding
+        // =========================================================================
+        if (environment.acceptsProfiles(Profiles.of("prod"))) {
+            System.out.println("🚀 Production profile active. Mandatory schema & admin configured. Skipping mock data seeding.");
+            return;
+        }
 
-        Mosque mosque3 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Islamic Center of Peace", "North Valley")
-                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
-                        .name("Islamic Center of Peace")
-                        .city("North Valley")
-                        .address("Garden Avenue")
-                        .fiqhSchool("Hanafi")
-                        .verified(true)
-                        .build()));
+        // =========================================================================
+        // 4. Local Development Only: Seed Mock Data for UI Testing
+        // =========================================================================
+        seedDevMockData();
+    }
 
-        Mosque mosque4 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Usman Ghani", "West Sector")
-                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
-                        .name("Masjid Usman Ghani")
-                        .city("West Sector")
-                        .address("Ring Road, Sector 5")
-                        .fiqhSchool("Hanafi")
-                        .verified(true)
-                        .build()));
-
-        // 2. Seed / Configure Admin Users from Environment / Config
+    private void seedAdminUsers() {
         if (adminUsersConfig != null && !adminUsersConfig.isBlank()) {
             String[] adminEntries = adminUsersConfig.split(",");
             for (String entry : adminEntries) {
@@ -159,8 +134,29 @@ public class DataSeeder implements CommandLineRunner {
                 }
             }
         }
+    }
 
-        // 3. Seed Home Banners (Max 4)
+    private void seedDevMockData() {
+        // Seed Established Mosques (Dev only)
+        Mosque mosque1 = mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Al-Noor", "Central District")
+                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                        .name("Masjid Al-Noor")
+                        .city("Central District")
+                        .address("Plot 12, Main Sunni Complex")
+                        .fiqhSchool("Hanafi")
+                        .verified(true)
+                        .build()));
+
+        mosqueRepository.findByNameIgnoreCaseAndCityIgnoreCase("Masjid Bilal (Downtown)", "East District")
+                .orElseGet(() -> mosqueRepository.save(Mosque.builder()
+                        .name("Masjid Bilal (Downtown)")
+                        .city("East District")
+                        .address("Near Clock Tower")
+                        .fiqhSchool("Shafi'i")
+                        .verified(true)
+                        .build()));
+
+        // Seed Home Banners (Dev only)
         if (bannerRepository.count() == 0) {
             Banner b1 = Banner.builder()
                     .imageUrl("https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1200&q=80")
@@ -176,24 +172,10 @@ public class DataSeeder implements CommandLineRunner {
                     .displayOrder(2)
                     .build();
 
-            Banner b3 = Banner.builder()
-                    .imageUrl("https://images.unsplash.com/photo-1542816417-0983c9c9ad53?auto=format&fit=crop&w=1200&q=80")
-                    .title("Masjid Al-Aqsa • Accurate Daily Prayers & Timetables")
-                    .actionUrl(null)
-                    .displayOrder(3)
-                    .build();
-
-            Banner b4 = Banner.builder()
-                    .imageUrl("https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?auto=format&fit=crop&w=1200&q=80")
-                    .title("Grand Mosque • Verified Sunni Scholars & Public Library")
-                    .actionUrl(null)
-                    .displayOrder(4)
-                    .build();
-
-            bannerRepository.saveAll(List.of(b1, b2, b3, b4));
+            bannerRepository.saveAll(List.of(b1, b2));
         }
 
-        // 4. Seed sample resources if any verified imam exists
+        // Seed sample resources if any verified imam exists (Dev only)
         ImamProfile anyImam = imamProfileRepository.findAll().stream().filter(ImamProfile::isVerified).findFirst().orElse(null);
         if (anyImam != null) {
             LocalDate today = LocalDate.now();
@@ -224,22 +206,12 @@ public class DataSeeder implements CommandLineRunner {
                         .imamProfile(anyImam)
                         .type(ResourceType.BOOK)
                         .title("Tafseer Khazain-ul-Irfan (خزائن العرفان فی تفسیر القرآن)")
-                        .description("[QURAN] The premier Sunni commentary on Kanzul Iman • Author: Sadrul Afazil Allama Naeemuddin Muradabadi")
+                        .description("[QURAN] The premier Sunni commentary on Kanzul Iman")
                         .fileUrl("https://example.com/books/khazain-ul-irfan.pdf")
                         .build();
 
-                ImamResource r2 = ImamResource.builder()
-                        .imamProfile(anyImam)
-                        .type(ResourceType.BOOK)
-                        .title("Bahar-e-Shariat (بہارِ شریعت جلد دوم - عبادات و روزمرہ مسائل)")
-                        .description("[MASAIL] The universal encyclopedia of Hanafi Islamic rulings and daily jurisprudence • Author: Sadrush Shariah Allama Amjad Ali Azmi")
-                        .fileUrl("https://example.com/books/bahar-e-shariat.pdf")
-                        .build();
-
-                imamResourceRepository.saveAll(List.of(r1, r2));
+                imamResourceRepository.save(r1);
             }
         }
-
-        System.out.println("✅ Angus Masail Database Seeding Complete! Admins configured from environment.");
     }
 }
