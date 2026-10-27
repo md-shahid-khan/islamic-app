@@ -8,6 +8,12 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
+  datasource:
+    hikari:
+      data-source-properties:
+        prepareThreshold: 0
+        preparedStatementCacheQueries: 0
+
   servlet:
     multipart:
       max-file-size: 50MB

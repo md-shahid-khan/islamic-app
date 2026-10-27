@@ -53,6 +53,17 @@ set_env "ADMIN_PASSWORD" "${ADMIN_PASSWORD:-}"
 set_env "ADMIN_NAME" "${ADMIN_NAME:-}"
 set_env "ADMIN_PHONE" "${ADMIN_PHONE:-}"
 
+# Ensure prepareThreshold=0 is present to prevent PostgreSQL cached plan errors with poolers (Layerbase/PgBouncer)
+if grep -q "^SPRING_DATASOURCE_URL=" .env; then
+    if ! grep "^SPRING_DATASOURCE_URL=" .env | grep -q "prepareThreshold=0"; then
+        if grep "^SPRING_DATASOURCE_URL=" .env | grep -q "?"; then
+            sed -i 's|^\(SPRING_DATASOURCE_URL=.*\)|\1\&prepareThreshold=0|' .env
+        else
+            sed -i 's|^\(SPRING_DATASOURCE_URL=.*\)|\1?prepareThreshold=0|' .env
+        fi
+    fi
+fi
+
 # 3. Pull latest prebuilt Docker image from Docker Hub
 echo "📥 [2/5] Pulling latest production image..."
 docker compose pull backend
