@@ -37,21 +37,27 @@ set_env() {
     fi
 }
 
+set_env "SPRING_PROFILES_ACTIVE" "${SPRING_PROFILES_ACTIVE:-prod}"
+set_env "SPRING_DATASOURCE_URL" "${SPRING_DATASOURCE_URL:-}"
+set_env "SPRING_DATASOURCE_USERNAME" "${SPRING_DATASOURCE_USERNAME:-}"
+set_env "SPRING_DATASOURCE_PASSWORD" "${SPRING_DATASOURCE_PASSWORD:-}"
+set_env "SPRING_DATA_REDIS_HOST" "${SPRING_DATA_REDIS_HOST:-}"
+set_env "SPRING_DATA_REDIS_PORT" "${SPRING_DATA_REDIS_PORT:-}"
+set_env "SPRING_DATA_REDIS_PASSWORD" "${SPRING_DATA_REDIS_PASSWORD:-}"
 set_env "SPRING_MAIL_USERNAME" "${SPRING_MAIL_USERNAME:-}"
 set_env "SPRING_MAIL_PASSWORD" "${SPRING_MAIL_PASSWORD:-}"
-set_env "DB_PASSWORD" "${DB_PASSWORD:-}"
 set_env "APP_JWT_SECRET" "${APP_JWT_SECRET:-}"
 
 # 3. Pull latest prebuilt Docker image from Docker Hub
 echo "📥 [2/5] Pulling latest production image..."
 docker compose pull backend
 
-# 4. Clean any legacy orphaned container names
+# 4. Clean any legacy orphaned containers (including legacy local db/redis)
 for c in angus_backend angus_nginx angus_db angus_redis; do
     if docker ps -a --format '{{.Names}}' | grep -Eq "^/?${c}\$"; then
         CURRENT_PROJ=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$c" 2>/dev/null || echo "")
-        if [ "$CURRENT_PROJ" != "angusmasail" ]; then
-            echo "⚠️ Removing conflicting foreign container: $c"
+        if [ "$CURRENT_PROJ" != "angusmasail" ] || [ "$c" = "angus_db" ] || [ "$c" = "angus_redis" ]; then
+            echo "🧹 Removing legacy or conflicting container: $c"
             docker rm -f "$c" >/dev/null 2>&1 || true
         fi
     fi
@@ -61,14 +67,7 @@ done
 echo "🔄 [3/5] Starting containers with docker compose..."
 docker compose up -d --remove-orphans
 
-# 6. Ensure PostgreSQL internal password matches .env
-CURRENT_DB_PASS=$(grep -E '^DB_PASSWORD=' .env 2>/dev/null | cut -d'=' -f2- | tr -d '\r"'"'" || true)
-if [ -n "$CURRENT_DB_PASS" ]; then
-    docker compose exec -T db psql -U postgres -d postgres -c "ALTER USER postgres WITH PASSWORD '${CURRENT_DB_PASS}';" >/dev/null 2>&1 || true
-    docker compose restart backend >/dev/null 2>&1 || true
-fi
-
-# 7. Health check verification
+# 6. Health check verification
 echo "⏳ [4/5] Verifying backend health..."
 MAX_ATTEMPTS=24
 COUNT=0
@@ -90,7 +89,7 @@ if [ $COUNT -eq $MAX_ATTEMPTS ]; then
     exit 1
 fi
 
-# 8. Clean old images
+# 7. Clean old images
 echo "🧹 [5/5] Cleaning old Docker image layers..."
 docker image prune -f || true
 

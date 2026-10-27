@@ -22,28 +22,9 @@ services:
     image: ${DOCKER_IMAGE:-codominator/angusmasail-backend:latest}
     container_name: angus_backend
     env_file:
-      - path: .env
-        required: false
+      - .env
     ports:
       - "127.0.0.1:8080:8080"
-    environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
-      JAVA_OPTS: "-Xmx384m -Xms256m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom --enable-native-access=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED"
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-angusmasail}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-password}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_DATA_REDIS_PORT: 6379
-      APP_UPLOAD_DIR: /app/uploads
-      APP_JWT_SECRET: ${APP_JWT_SECRET:-4b29bb88b3f81e3a6c813589b276707328ff9029a1b8ed83427f8a7e0892c575a89f9202a}
-      SPRING_MAIL_HOST: ${SPRING_MAIL_HOST:-smtp.gmail.com}
-      SPRING_MAIL_PORT: ${SPRING_MAIL_PORT:-587}
-      SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-}
-      SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-}
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:-true}
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:-true}
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED:-true}
-      APP_ADMIN_USERS: ${APP_ADMIN_USERS:-admin@angusmasail.com:Admin@123:Super Admin:9999999999}
     volumes:
       - backend_uploads:/app/uploads
     healthcheck:
@@ -51,45 +32,8 @@ services:
       interval: 15s
       timeout: 5s
       retries: 6
-      start_period: 60s
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    restart: unless-stopped
-
-  db:
-    image: pgvector/pgvector:pg16
-    container_name: angus_db
-    env_file:
-      - path: .env
-        required: false
-    ports:
-      - "127.0.0.1:5432:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-angusmasail}
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-angusmasail}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  redis:
-    image: redis:7.4-alpine
-    container_name: angus_redis
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
+      start_period: 40s
     restart: unless-stopped
 
 volumes:
-  db_data:
-  redis_data:
   backend_uploads:
