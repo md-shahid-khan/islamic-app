@@ -34,9 +34,10 @@ spring:
 
   data:
     redis:
-      url: ${SPRING_DATA_REDIS_HOST}
-      ssl:
-        enabled: true  # Recommended for remote cloud Redis instances
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD}
+      timeout: 2000ms
 
   mail:
     host: ${SPRING_MAIL_HOST:smtp.gmail.com}
@@ -57,6 +58,12 @@ spring:
 app:
   upload:
     dir: ${APP_UPLOAD_DIR:/app/uploads}
+  jwt:
+    secret: ${APP_JWT_SECRET:4b29bb88b3f81e3a6c813589b276707328ff9029a1b8ed83427f8a7e0892c575a89f9202a}
+    expirationMs: ${APP_JWT_EXPIRATION_MS:86400000}
+    refreshExpirationMs: ${APP_JWT_REFRESH_EXPIRATION_MS:604800000}
+  admin:
+    users: ${APP_ADMIN_USERS:admin@angusmasail.com:Admin@123:Super Admin:9999999999}
 
 logging:
   level:

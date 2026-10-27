@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,8 +37,8 @@ public class DataSeeder implements CommandLineRunner {
     @Autowired
     private MosqueRepository mosqueRepository;
 
-    @Autowired(required = false)
-    private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Autowired(required = false)
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
@@ -45,7 +46,7 @@ public class DataSeeder implements CommandLineRunner {
     @Autowired
     private Environment environment;
 
-    @Value("${app.admin.users:admin@angusmasail.com:admin123:Central Admin:9998887776}")
+    @Value("${app.admin.users:admin@angusmasail.com:Admin@123:Super Admin:9999999999}")
     private String adminUsersConfig;
 
     @Override
@@ -63,7 +64,7 @@ public class DataSeeder implements CommandLineRunner {
         }
 
         // =========================================================================
-        // 2. Mandatory Admin User Provisioning (Required in all profiles)
+        // 2. Mandatory Admin User Provisioning (Required in all profiles from .env)
         // =========================================================================
         seedAdminUsers();
 
@@ -71,7 +72,7 @@ public class DataSeeder implements CommandLineRunner {
         // 3. In Production: Skip all mock/sample data seeding
         // =========================================================================
         if (environment.acceptsProfiles(Profiles.of("prod"))) {
-            System.out.println("🚀 Production profile active. Mandatory schema & admin configured. Skipping mock data seeding.");
+            System.out.println("🚀 Production profile active. Admin & schema ready. Skipping mock data seeding.");
             return;
         }
 
@@ -82,58 +83,195 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedAdminUsers() {
-        if (adminUsersConfig != null && !adminUsersConfig.isBlank()) {
-            String[] adminEntries = adminUsersConfig.split(",");
-            for (String entry : adminEntries) {
-                String trimmed = entry.trim();
-                if (trimmed.isEmpty()) continue;
-                String[] parts = trimmed.split(":");
-                String identifier = parts[0].trim();
-                String rawPassword = parts.length > 1 ? parts[1].trim() : "admin123";
-                String adminName = parts.length > 2 ? parts[2].trim() : "System Administrator";
-                String adminPhone = parts.length > 3 ? parts[3].trim() : "";
+        String rawConfig = resolveAdminConfig();
+        if (rawConfig == null || rawConfig.isBlank()) {
+            System.out.println("ℹ️ No admin configuration found in environment. Using default admin template.");
+            rawConfig = "admin@angusmasail.com:Admin@123:Super Admin:9999999999";
+        }
 
-                String encodedPassword = passwordEncoder != null ? passwordEncoder.encode(rawPassword) : rawPassword;
-                String email = identifier.contains("@") ? identifier : identifier + "@angusmasail.com";
-                String username = identifier.contains("@") ? identifier.split("@")[0] : identifier;
+        System.out.println("🌱 Processing Admin provisioning from config: " + maskSensitiveConfig(rawConfig));
 
-                Optional<User> existingUser = userRepository.findByEmail(email);
-                if (existingUser.isEmpty() && !adminPhone.isEmpty()) {
-                    existingUser = userRepository.findByPhone(adminPhone);
-                }
-                if (existingUser.isEmpty()) {
-                    existingUser = userRepository.findByUsername(username);
-                }
+        String[] adminEntries = rawConfig.split(",");
+        for (String entry : adminEntries) {
+            String trimmed = cleanValue(entry);
+            if (trimmed.isEmpty()) continue;
 
-                if (existingUser.isPresent()) {
-                    User u = existingUser.get();
-                    u.setRole(Role.ROLE_ADMIN);
-                    u.setPassword(encodedPassword);
-                    u.setEmailVerified(true);
-                    u.setEmail(email);
-                    u.setName(adminName);
-                    if (!adminPhone.isEmpty()) {
-                        u.setPhone(adminPhone);
-                    }
-                    userRepository.save(u);
-                    System.out.println("Configured Admin user: " + email + " (" + u.getRole() + ")");
-                } else {
-                    User u = User.builder()
-                            .username(username)
-                            .email(email)
-                            .phone(adminPhone.isEmpty() ? null : adminPhone)
-                            .name(adminName)
-                            .locality("Central District")
-                            .manhaj(Manhaj.HANAFI.getDisplayName())
-                            .password(encodedPassword)
-                            .emailVerified(true)
-                            .role(Role.ROLE_ADMIN)
-                            .build();
-                    userRepository.save(u);
-                    System.out.println("Seeded New Admin user: " + email + " (ROLE_ADMIN)");
-                }
+            try {
+                processSingleAdminEntry(trimmed);
+            } catch (Exception e) {
+                System.err.println("❌ Failed to provision admin entry '" + trimmed + "': " + e.getMessage());
+                e.printStackTrace();
             }
         }
+    }
+
+    private void processSingleAdminEntry(String entry) {
+        String[] parts = entry.split(":");
+        String rawIdentifier = cleanValue(parts[0]);
+        String rawPassword = parts.length > 1 ? cleanValue(parts[1]) : "Admin@123";
+        String adminName = parts.length > 2 ? cleanValue(parts[2]) : "Super Admin";
+        String adminPhone = parts.length > 3 ? cleanValue(parts[3]) : "";
+
+        if (rawIdentifier.isEmpty()) return;
+
+        // Determine email and username
+        String email;
+        String username;
+
+        if (rawIdentifier.contains("@")) {
+            email = rawIdentifier.toLowerCase();
+            username = email.split("@")[0].replaceAll("[^a-zA-Z0-9_]", "_");
+        } else {
+            // Identifier is a username
+            username = rawIdentifier.toLowerCase().replaceAll("[^a-zA-Z0-9_]", "_");
+            email = username + "@angusmasail.com";
+        }
+
+        // Generate a safe unique 10-digit phone if not provided to satisfy not-null constraint
+        String cleanPhone = adminPhone.replaceAll("[^0-9]", "");
+        if (cleanPhone.length() < 7 || cleanPhone.length() > 15) {
+            cleanPhone = "99" + String.format("%08d", Math.abs(email.hashCode()) % 100000000);
+        }
+
+        String encodedPassword = passwordEncoder.encode(rawPassword);
+
+        // Find existing user by email, username, or phone
+        Optional<User> existingUser = userRepository.findByEmail(email);
+        if (existingUser.isEmpty()) {
+            existingUser = userRepository.findByUsername(username);
+        }
+        if (existingUser.isEmpty()) {
+            existingUser = userRepository.findByPhone(cleanPhone);
+        }
+
+        User u;
+        if (existingUser.isPresent()) {
+            u = existingUser.get();
+            u.setRole(Role.ROLE_ADMIN);
+            u.setPassword(encodedPassword);
+            u.setEmailVerified(true);
+            u.setEmail(email);
+            u.setName(adminName);
+
+            // Avoid phone collision if phone belongs to another account
+            Optional<User> phoneHolder = userRepository.findByPhone(cleanPhone);
+            if (phoneHolder.isEmpty() || phoneHolder.get().getId().equals(u.getId())) {
+                u.setPhone(cleanPhone);
+            }
+
+            // Avoid username collision
+            Optional<User> userHolder = userRepository.findByUsername(username);
+            if (userHolder.isEmpty() || userHolder.get().getId().equals(u.getId())) {
+                u.setUsername(username);
+            }
+
+            u = userRepository.save(u);
+            printAdminSuccess("Updated Existing Admin", u);
+        } else {
+            // Check collisions before insert
+            Optional<User> phoneHolder = userRepository.findByPhone(cleanPhone);
+            if (phoneHolder.isPresent()) {
+                cleanPhone = "98" + String.format("%08d", (System.currentTimeMillis() + Math.abs(email.hashCode())) % 100000000);
+            }
+
+            Optional<User> userHolder = userRepository.findByUsername(username);
+            if (userHolder.isPresent()) {
+                username = username + "_" + (System.currentTimeMillis() % 1000);
+            }
+
+            u = User.builder()
+                    .username(username)
+                    .email(email)
+                    .phone(cleanPhone)
+                    .name(adminName)
+                    .locality("Central District")
+                    .manhaj(Manhaj.HANAFI.getDisplayName())
+                    .password(encodedPassword)
+                    .emailVerified(true)
+                    .role(Role.ROLE_ADMIN)
+                    .build();
+
+            u = userRepository.save(u);
+            printAdminSuccess("Created New Admin", u);
+        }
+    }
+
+    private void printAdminSuccess(String action, User u) {
+        System.out.println("==================================================================");
+        System.out.println("👑 [ADMIN SEEDER] " + action + ":");
+        System.out.println("   📧 Email:    " + u.getEmail());
+        System.out.println("   👤 Username: " + u.getUsername());
+        System.out.println("   📱 Phone:    " + u.getPhone());
+        System.out.println("   📛 Name:     " + u.getName());
+        System.out.println("   🛡️ Role:     " + u.getRole());
+        System.out.println("   🔑 Password: [BCRYPT ENCRYPTED]");
+        System.out.println("==================================================================");
+    }
+
+    private String resolveAdminConfig() {
+        // 1. Direct environment variable APP_ADMIN_USERS / app.admin.users
+        String config = getFirstNonBlank(
+                environment.getProperty("APP_ADMIN_USERS"),
+                environment.getProperty("app.admin.users"),
+                environment.getProperty("ADMIN_USERS"),
+                adminUsersConfig
+        );
+
+        if (config != null && !config.isBlank()) {
+            return cleanValue(config);
+        }
+
+        // 2. Individual environment variables (ADMIN_EMAIL + ADMIN_PASSWORD)
+        String email = getFirstNonBlank(
+                environment.getProperty("ADMIN_EMAIL"),
+                environment.getProperty("APP_ADMIN_EMAIL")
+        );
+        String password = getFirstNonBlank(
+                environment.getProperty("ADMIN_PASSWORD"),
+                environment.getProperty("APP_ADMIN_PASSWORD")
+        );
+
+        if (email != null && password != null) {
+            String name = getFirstNonBlank(
+                    environment.getProperty("ADMIN_NAME"),
+                    environment.getProperty("APP_ADMIN_NAME"),
+                    "Super Admin"
+            );
+            String phone = getFirstNonBlank(
+                    environment.getProperty("ADMIN_PHONE"),
+                    environment.getProperty("APP_ADMIN_PHONE"),
+                    "9999999999"
+            );
+            return cleanValue(email) + ":" + cleanValue(password) + ":" + cleanValue(name) + ":" + cleanValue(phone);
+        }
+
+        return null;
+    }
+
+    private String getFirstNonBlank(String... values) {
+        if (values == null) return null;
+        for (String v : values) {
+            if (v != null && !v.trim().isBlank()) {
+                return v.trim();
+            }
+        }
+        return null;
+    }
+
+    private String cleanValue(String val) {
+        if (val == null) return "";
+        val = val.trim();
+        if ((val.startsWith("\"") && val.endsWith("\"")) || (val.startsWith("'") && val.endsWith("'"))) {
+            if (val.length() >= 2) {
+                val = val.substring(1, val.length() - 1).trim();
+            }
+        }
+        return val;
+    }
+
+    private String maskSensitiveConfig(String config) {
+        if (config == null || config.isBlank()) return "[EMPTY]";
+        return config.replaceAll(":[^:,]+:", ":****:");
     }
 
     private void seedDevMockData() {

@@ -47,6 +47,11 @@ set_env "SPRING_DATA_REDIS_PASSWORD" "${SPRING_DATA_REDIS_PASSWORD:-}"
 set_env "SPRING_MAIL_USERNAME" "${SPRING_MAIL_USERNAME:-}"
 set_env "SPRING_MAIL_PASSWORD" "${SPRING_MAIL_PASSWORD:-}"
 set_env "APP_JWT_SECRET" "${APP_JWT_SECRET:-}"
+set_env "APP_ADMIN_USERS" "${APP_ADMIN_USERS:-}"
+set_env "ADMIN_EMAIL" "${ADMIN_EMAIL:-}"
+set_env "ADMIN_PASSWORD" "${ADMIN_PASSWORD:-}"
+set_env "ADMIN_NAME" "${ADMIN_NAME:-}"
+set_env "ADMIN_PHONE" "${ADMIN_PHONE:-}"
 
 # 3. Pull latest prebuilt Docker image from Docker Hub
 echo "📥 [2/5] Pulling latest production image..."
