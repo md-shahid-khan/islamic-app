@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Angus Masail - Automated EC2 Deployment Script
-# Executed on AWS EC2 by GitHub Actions or manually via SSH
+# Angus Masail - Simple EC2 Production Deployment
+# Usage: ./deploy-ec2.sh
 # ==============================================================================
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-$HOME/angusmasail}"
 echo "============================================================"
-echo "🚀 [1/5] Starting Angus Masail Deployment in $APP_DIR"
+echo "🚀 [1/5] Deploying Angus Masail in: $APP_DIR"
 echo "============================================================"
 
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
-# Ensure .env file exists
+# 1. Ensure .env exists
 if [ ! -f .env ]; then
     if [ -f .env.example ]; then
         echo "⚠️ .env not found, initializing from .env.example..."
@@ -24,86 +24,76 @@ if [ ! -f .env ]; then
     fi
 fi
 
-# Automatically sync sensitive environment variables if passed from CI/CD
-update_env_key() {
-    local key="$1"
-    local val="$2"
-    if [ -n "$val" ]; then
-        if grep -q "^${key}=" .env; then
-            sed -i "s|^${key}=.*|${key}=${val}|" .env
+# 2. Sync any environment variables passed dynamically
+set_env() {
+    local k="$1"
+    local v="$2"
+    if [ -n "$v" ]; then
+        if grep -q "^${k}=" .env; then
+            sed -i "s|^${k}=.*|${k}=${v}|" .env
         else
-            echo "${key}=${val}" >> .env
+            echo "${k}=${v}" >> .env
         fi
     fi
 }
 
-update_env_key "SPRING_MAIL_USERNAME" "${SPRING_MAIL_USERNAME:-}"
-update_env_key "SPRING_MAIL_PASSWORD" "${SPRING_MAIL_PASSWORD:-}"
-update_env_key "DB_PASSWORD" "${DB_PASSWORD:-}"
-update_env_key "APP_JWT_SECRET" "${APP_JWT_SECRET:-}"
+set_env "SPRING_MAIL_USERNAME" "${SPRING_MAIL_USERNAME:-}"
+set_env "SPRING_MAIL_PASSWORD" "${SPRING_MAIL_PASSWORD:-}"
+set_env "DB_PASSWORD" "${DB_PASSWORD:-}"
+set_env "APP_JWT_SECRET" "${APP_JWT_SECRET:-}"
 
-# Ensure docker compose is available
-if ! command -v docker &> /dev/null; then
-    echo "❌ ERROR: Docker is not installed on this EC2 instance."
-    echo "Please install Docker and Docker Compose plugin first."
-    exit 1
-fi
-
-echo "📥 [2/5] Pulling latest production Docker image..."
+# 3. Pull latest prebuilt Docker image from Docker Hub
+echo "📥 [2/5] Pulling latest production image..."
 docker compose pull backend
 
-echo "🔄 [3/5] Restarting services with zero downtime..."
-# Clean up any conflicting foreign containers from previous manual or differently named runs
+# 4. Clean any legacy orphaned container names
 for c in angus_backend angus_nginx angus_db angus_redis; do
     if docker ps -a --format '{{.Names}}' | grep -Eq "^/?${c}\$"; then
         CURRENT_PROJ=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$c" 2>/dev/null || echo "")
         if [ "$CURRENT_PROJ" != "angusmasail" ]; then
-            echo "⚠️ Removing conflicting container: $c (previous project: '${CURRENT_PROJ:-standalone}')"
+            echo "⚠️ Removing conflicting foreign container: $c"
             docker rm -f "$c" >/dev/null 2>&1 || true
         fi
     fi
 done
 
-if ! docker compose up -d --remove-orphans; then
-    echo "⚠️ Compose conflict detected. Forcing cleanup of stale container names..."
-    docker rm -f angus_db angus_redis angus_backend angus_nginx 2>/dev/null || true
-    docker compose up -d --remove-orphans
-fi
+# 5. Start containers with zero-downtime recreation
+echo "🔄 [3/5] Starting containers with docker compose..."
+docker compose up -d --remove-orphans
 
-# Sync Postgres superuser password in case the volume was initialized with an older password
+# 6. Ensure PostgreSQL internal password matches .env
 CURRENT_DB_PASS=$(grep -E '^DB_PASSWORD=' .env 2>/dev/null | cut -d'=' -f2- | tr -d '\r"'"'" || true)
 if [ -n "$CURRENT_DB_PASS" ]; then
-    echo "🔑 Syncing PostgreSQL credentials with .env..."
     docker compose exec -T db psql -U postgres -d postgres -c "ALTER USER postgres WITH PASSWORD '${CURRENT_DB_PASS}';" >/dev/null 2>&1 || true
     docker compose restart backend >/dev/null 2>&1 || true
 fi
 
-echo "⏳ [4/5] Waiting for backend to become healthy..."
+# 7. Health check verification
+echo "⏳ [4/5] Verifying backend health..."
 MAX_ATTEMPTS=24
 COUNT=0
 
 while [ $COUNT -lt $MAX_ATTEMPTS ]; do
     if curl -s -f "http://127.0.0.1:8080/health" > /dev/null 2>&1 || curl -s -f "http://127.0.0.1/health" > /dev/null 2>&1; then
-        echo "✅ Backend health check passed! (returned 200 OK)"
+        echo "✅ Backend is healthy and running!"
         docker compose exec -T -u root backend chown -R spring:spring /app/uploads >/dev/null 2>&1 || true
         break
     fi
     COUNT=$((COUNT + 1))
-    echo "   Waiting for backend to start ($COUNT/$MAX_ATTEMPTS)..."
+    echo "   Starting up... ($COUNT/$MAX_ATTEMPTS)"
     sleep 5
 done
 
 if [ $COUNT -eq $MAX_ATTEMPTS ]; then
-    echo "⚠️ Warning: Backend healthcheck timed out after 120s."
-    echo "Inspecting last 50 lines of container logs:"
-    docker compose logs --tail=50 backend
+    echo "⚠️ Warning: Healthcheck timed out after 120s. Container logs:"
+    docker compose logs --tail=40 backend
     exit 1
 fi
 
-echo "🧹 [5/5] Pruning old unused Docker images..."
+# 8. Clean old images
+echo "🧹 [5/5] Cleaning old Docker image layers..."
 docker image prune -f || true
 
 echo "============================================================"
-echo "🎉 DEPLOYMENT SUCCESSFUL!"
-echo "Angus Masail backend is live and healthy."
+echo "🎉 Angus Masail is live and healthy!"
 echo "============================================================"
