@@ -17,6 +17,9 @@ public interface MosqueRepository extends JpaRepository<Mosque, UUID> {
 
     List<Mosque> findByVerifiedFalseOrderByCreatedAtDesc();
 
+    @Query("SELECT DISTINCT m FROM Mosque m LEFT JOIN FETCH m.registeredBy LEFT JOIN FETCH m.currentImam i LEFT JOIN FETCH i.user WHERE m.verified = false ORDER BY m.createdAt DESC")
+    List<Mosque> findPendingMosquesWithDetails();
+
     @Query("SELECT m FROM Mosque m WHERE m.verified = true AND (LOWER(m.city) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(m.name) LIKE LOWER(CONCAT('%', :search, '%'))) ORDER BY m.createdAt DESC")
     List<Mosque> searchVerifiedMosques(@Param("search") String search);
 

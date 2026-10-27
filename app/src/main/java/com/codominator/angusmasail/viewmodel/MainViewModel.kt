@@ -737,10 +737,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (found != null) {
                         _selectedImam.value = found
                         fetchAllDataForImam(found.id)
-                    } else if (list.isNotEmpty()) {
+                    } else if (_selectedImam.value == null && list.isNotEmpty()) {
                         selectImam(list.first())
                     }
-                } else if (list.isNotEmpty()) {
+                } else if (_selectedImam.value == null && list.isNotEmpty()) {
                     selectImam(list.first())
                 }
             }
@@ -1356,6 +1356,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val created = res.body()!!
                     fetchMosques()
                     fetchAvailableMosques()
+                    loadPendingMosques()
                     onSuccess(created)
                 } else {
                     onError("Failed with status ${res.code()}")
@@ -1370,6 +1371,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectMosque(mosque: MosqueDto) {
         viewModelScope.launch {
             try {
+                // 1. Immediately resolve and set selected mosque representation in UI
+                val targetImamId = mosque.currentImamId
+                val matchingImam = _imams.value.find { 
+                    (targetImamId != null && it.id == targetImamId) ||
+                    it.masjidName.equals(mosque.name, ignoreCase = true) 
+                }
+
+                val resolvedImam = matchingImam ?: ImamProfileDto(
+                    id = targetImamId ?: ("mosque_" + mosque.id),
+                    userId = "",
+                    imamName = mosque.currentImamName ?: "Community Mosque",
+                    phone = null,
+                    masjidName = mosque.name,
+                    masjidCity = mosque.city,
+                    bio = mosque.address ?: "Local Mosque",
+                    fiqhSchool = mosque.fiqhSchool ?: "Hanafi",
+                    hijriOffsetDays = mosque.hijriOffsetDays,
+                    verified = mosque.verified
+                )
+
+                _selectedImam.value = resolvedImam
+                TokenManager.saveImamProfileId(getApplication(), resolvedImam.id)
+                _currentUser.value = _currentUser.value?.copy(
+                    selectedMasjidName = mosque.name,
+                    selectedMosqueId = mosque.id
+                )
+
+                if (!targetImamId.isNullOrBlank()) {
+                    fetchAllDataForImam(targetImamId)
+                }
+
+                // 2. Persist selection to backend if user is authenticated
                 if (_currentUser.value != null) {
                     try {
                         val res = ApiClient.api.selectMosque(mosque.id)
@@ -1380,31 +1413,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         e.printStackTrace()
                     }
                 }
-                val targetImamId = mosque.currentImamId
-                val matchingImam = _imams.value.find { 
-                    (targetImamId != null && it.id == targetImamId) ||
-                    it.masjidName.equals(mosque.name, ignoreCase = true) 
-                }
-                if (matchingImam != null) {
-                    selectImam(matchingImam)
-                } else if (!targetImamId.isNullOrBlank()) {
-                    val resolvedImam = ImamProfileDto(
-                        id = targetImamId,
-                        userId = "",
-                        imamName = mosque.currentImamName ?: "Imam of ${mosque.name}",
-                        phone = null,
-                        masjidName = mosque.name,
-                        masjidCity = mosque.city,
-                        bio = mosque.address ?: "Local Mosque",
-                        fiqhSchool = mosque.fiqhSchool ?: "Hanafi",
-                        hijriOffsetDays = mosque.hijriOffsetDays,
-                        verified = mosque.verified
-                    )
-                    TokenManager.saveImamProfileId(getApplication(), targetImamId)
-                    _selectedImam.value = resolvedImam
-                    fetchAllDataForImam(targetImamId)
-                }
-                fetchImamsAndSetDefault()
             } catch (e: Exception) {
                 e.printStackTrace()
             }

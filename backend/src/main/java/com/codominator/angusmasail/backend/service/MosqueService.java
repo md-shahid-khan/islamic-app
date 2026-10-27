@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
+@Transactional(readOnly = true)
 public class MosqueService {
 
     @Autowired
@@ -27,6 +28,24 @@ public class MosqueService {
     public MosqueDto mapToDto(Mosque m) {
         if (m == null) return null;
         boolean hasImam = m.getCurrentImam() != null;
+        String currentImamName = null;
+        UUID currentImamId = null;
+        if (hasImam) {
+            currentImamId = m.getCurrentImam().getId();
+            try {
+                if (m.getCurrentImam().getUser() != null) {
+                    currentImamName = m.getCurrentImam().getUser().getName();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        String registeredByName = "Community Member";
+        try {
+            if (m.getRegisteredBy() != null && m.getRegisteredBy().getName() != null) {
+                registeredByName = m.getRegisteredBy().getName();
+            }
+        } catch (Exception ignored) {}
+
         return MosqueDto.builder()
                 .id(m.getId())
                 .name(m.getName())
@@ -38,9 +57,9 @@ public class MosqueService {
                 .hijriOffsetDays(m.getHijriOffsetDays())
                 .verified(m.isVerified())
                 .hasImam(hasImam)
-                .currentImamId(hasImam ? m.getCurrentImam().getId() : null)
-                .currentImamName(hasImam && m.getCurrentImam().getUser() != null ? m.getCurrentImam().getUser().getName() : null)
-                .registeredByName(m.getRegisteredBy() != null ? m.getRegisteredBy().getName() : "Community Member")
+                .currentImamId(currentImamId)
+                .currentImamName(currentImamName)
+                .registeredByName(registeredByName)
                 .createdAt(m.getCreatedAt())
                 .build();
     }
@@ -72,7 +91,7 @@ public class MosqueService {
     }
 
     public List<MosqueDto> getPendingMosques() {
-        return mosqueRepository.findByVerifiedFalseOrderByCreatedAtDesc().stream()
+        return mosqueRepository.findPendingMosquesWithDetails().stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
     }

@@ -478,7 +478,9 @@ public class AuthService {
 
     public UserDto mapToUserDto(User user) {
         UUID selectedImamId = user.getSelectedImam() != null ? user.getSelectedImam().getId() : null;
-        String selectedMasjid = user.getSelectedImam() != null ? user.getSelectedImam().getMasjidName() : null;
+        UUID selectedMosqueId = user.getSelectedMosque() != null ? user.getSelectedMosque().getId() : null;
+        String selectedMasjid = user.getSelectedMosque() != null ? user.getSelectedMosque().getName() :
+                (user.getSelectedImam() != null ? user.getSelectedImam().getMasjidName() : null);
 
         Optional<ImamProfile> ip = imamProfileRepository.findByUserId(user.getId());
         Boolean isImamPending = ip.isPresent() && !ip.get().isVerified();
@@ -504,6 +506,7 @@ public class AuthService {
                 .manhaj(user.getManhaj())
                 .role(role)
                 .selectedImamProfileId(selectedImamId != null ? selectedImamId.toString() : (ip.isPresent() ? ip.get().getId().toString() : null))
+                .selectedMosqueId(selectedMosqueId != null ? selectedMosqueId.toString() : null)
                 .selectedMasjidName(selectedMasjid != null ? selectedMasjid : (ip.isPresent() ? ip.get().getMasjidName() : null))
                 .fcmToken(user.getFcmToken())
                 .isImamPending(isImamPending)

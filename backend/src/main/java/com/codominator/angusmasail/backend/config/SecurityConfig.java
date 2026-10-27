@@ -72,13 +72,15 @@ public class SecurityConfig {
                             "/api/v1/prayer/daily/**", 
                             "/api/v1/resources", "/api/v1/resources/**", 
                             "/api/v1/status/active/**").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/v1/mosques").permitAll()
+                    .requestMatchers("/api/v1/users/select-mosque/**").permitAll()
                     .requestMatchers(HttpMethod.PUT, "/api/v1/imam/prayer/update", "/api/v1/prayer/**").permitAll()
-                    .requestMatchers("/api/v1/admin/**").hasAuthority("ROLE_ADMIN")
+                    .requestMatchers("/api/v1/admin/**").hasAnyAuthority("ROLE_ADMIN", "ADMIN")
                     .requestMatchers("/api/v1/chat/upload", "/api/v1/chat/**").permitAll()
                     .requestMatchers("/api/v1/quran", "/api/v1/quran/**").permitAll()
                     .requestMatchers("/api/v1/banners", "/api/v1/banners/**").permitAll()
                     .requestMatchers("/api/v1/library/**", "/api/v1/resources/**").permitAll()
-                    .requestMatchers("/api/v1/imam/**").hasAnyAuthority("ROLE_IMAM", "ROLE_ADMIN")
+                    .requestMatchers("/api/v1/imam/**").hasAnyAuthority("ROLE_IMAM", "ROLE_ADMIN", "ADMIN")
                     .anyRequest().authenticated()
             );
 

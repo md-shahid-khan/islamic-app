@@ -58,6 +58,10 @@ public class User {
     @JoinColumn(name = "selected_imam_profile_id")
     private ImamProfile selectedImam;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "selected_mosque_id")
+    private Mosque selectedMosque;
+
     private String fcmToken;
 
     @CreationTimestamp

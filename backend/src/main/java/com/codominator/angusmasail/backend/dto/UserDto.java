@@ -24,6 +24,7 @@ public class UserDto {
     private String manhaj;
     private String role;
     private String selectedImamProfileId;
+    private String selectedMosqueId;
     private String selectedMasjidName;
     private String fcmToken;
     private Boolean isImamPending;

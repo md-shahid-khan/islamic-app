@@ -59,6 +59,7 @@ fun AdminDashboardScreen(
 
     LaunchedEffect(Unit) {
         viewModel.loadPendingImams()
+        viewModel.loadPendingMosques()
         viewModel.fetchBanners()
         viewModel.fetchLibraryBooks()
     }

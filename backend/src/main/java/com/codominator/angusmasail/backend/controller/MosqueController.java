@@ -99,6 +99,7 @@ public class MosqueController {
             User user = userRepository.findById(userDetails.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+            user.setSelectedMosque(mosque);
             ImamProfile imam = mosque.getCurrentImam();
             if (imam == null) {
                 List<ImamProfile> list = imamProfileRepository.findByMosqueId(mosque.getId());
