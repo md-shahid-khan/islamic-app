@@ -53,9 +53,13 @@ object ApiClient {
         .writeTimeout(25, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .apply {
-            sslContext?.let {
-                sslSocketFactory(it.socketFactory, trustAllCerts[0] as X509TrustManager)
-                hostnameVerifier { _, _ -> true }
+            // Only apply permissive trust in local non-prod debug builds
+            // Production release builds use standard platform certificates and strict hostname verification
+            if (BuildConfig.DEBUG && !BuildConfig.IS_PROD) {
+                sslContext?.let {
+                    sslSocketFactory(it.socketFactory, trustAllCerts[0] as X509TrustManager)
+                    hostnameVerifier { _, _ -> true }
+                }
             }
         }
 

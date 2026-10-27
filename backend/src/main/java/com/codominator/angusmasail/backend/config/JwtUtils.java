@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.UUID;
 
@@ -26,7 +27,18 @@ public class JwtUtils {
     private int refreshExpirationMs;
 
     private SecretKey key() {
-        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+        byte[] keyBytes;
+        try {
+            keyBytes = Decoders.BASE64.decode(jwtSecret);
+        } catch (Exception e) {
+            keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        }
+        if (keyBytes.length < 32) {
+            byte[] padded = new byte[32];
+            System.arraycopy(keyBytes, 0, padded, 0, keyBytes.length);
+            keyBytes = padded;
+        }
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
     public String generateAccessToken(UUID userId, String phone, String role) {
@@ -43,6 +55,7 @@ public class JwtUtils {
     public String generateRefreshToken(UUID userId) {
         return Jwts.builder()
                 .subject(userId.toString())
+                .claim("type", "refresh")
                 .issuedAt(new Date())
                 .expiration(new Date((new Date()).getTime() + refreshExpirationMs))
                 .signWith(key())

@@ -26,6 +26,9 @@ public class EmailService {
     @Value("${spring.mail.username:shahidangus@gmail.com}")
     private String senderEmail;
 
+    @Value("${spring.profiles.active:dev}")
+    private String activeProfile;
+
     @Autowired(required = false)
     private JavaMailSender mailSender;
 
@@ -131,8 +134,9 @@ public class EmailService {
         String cleanEmail = email.trim().toLowerCase();
         String trimmedOtp = inputOtp.trim();
 
-        // 1. Universal dev override for local development & testing
-        if ("123456".equals(trimmedOtp)) {
+        // 1. Dev override allowed only in local non-prod environments
+        if (!"prod".equalsIgnoreCase(activeProfile) && "123456".equals(trimmedOtp)) {
+            log.info("Mock OTP bypass accepted for {} in non-prod profile ({})", cleanEmail, activeProfile);
             return true;
         }
 
